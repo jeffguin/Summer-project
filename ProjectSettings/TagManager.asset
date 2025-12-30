@@ -21,6 +21,9 @@ TagManager:
   - GroundLayer
   - 
   - 
+  - Grabbable
+  - PhysicalObj
+  - Trigger
   - 
   - 
   - 
@@ -39,9 +42,6 @@ TagManager:
   - 
   - 
   - 
-  - 
-  - 
-  - Orb fitting
   m_SortingLayers:
   - name: Default
     uniqueID: 0
