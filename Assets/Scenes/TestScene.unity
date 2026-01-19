@@ -106428,7 +106428,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 4.967308, y: -0.20529997, z: -2.6985}
-  m_LocalScale: {x: 1.165, y: 1.165, z: 1.165}
+  m_LocalScale: {x: 1.2, y: 1.2, z: 1.2}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 617281295401630123}
@@ -112022,7 +112022,7 @@ Transform:
   m_GameObject: {fileID: 3933342831111891271}
   serializedVersion: 2
   m_LocalRotation: {x: 0.53753245, y: -0.3597922, z: -0.106315754, w: 0.75518566}
-  m_LocalPosition: {x: 0.36840725, y: -0.25700444, z: -0.60599995}
+  m_LocalPosition: {x: 0.9, y: 0.097, z: -0.606}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -118131,13 +118131,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4407803425249609792}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.7551858, y: -0.10631573, z: 0.35979226, w: 0.5375323}
-  m_LocalPosition: {x: -0.38808727, y: -0.257, z: -0.606}
+  m_LocalRotation: {x: -0.7551859, y: -0.10632259, z: 0.3597913, w: 0.5375313}
+  m_LocalPosition: {x: -0.9, y: 0.097, z: -0.606}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1061365359679594342}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: -132.662, y: 76.063, z: -53.876}
 --- !u!1 &3217917488577621870
 GameObject:
   m_ObjectHideFlags: 0
@@ -126615,7 +126615,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 5.04, y: -0.035557985, z: -2.628}
-  m_LocalScale: {x: 1.2121, y: 1.2121, z: 1.2121}
+  m_LocalScale: {x: 1.1, y: 1.1, z: 1.1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 9043551083644978724}
@@ -170615,7 +170615,7 @@ MonoBehaviour:
     ikTarget: {fileID: 9078097238336429429}
     trackingPositionOffset: {x: 0, y: 0, z: 0}
     trackingRotationOffset: {x: 0, y: -90, z: 0}
-  headBodyPositionOffset: {x: 0, y: -0.52, z: 0}
+  headBodyPositionOffset: {x: 0, y: -0.68, z: 0}
   headBodyYawOffset: 0
 --- !u!23 &8004440899248980253
 MeshRenderer:
