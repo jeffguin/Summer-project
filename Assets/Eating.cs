@@ -10,7 +10,7 @@ public class Eating : MonoBehaviour
     {
       var currentFood = mouthSocketInteractor.interactablesHovered[0];
       
-      // eatingSound.transform.position = mouthSocketInteractor.transform.position;
+      eatingSound.transform.position = mouthSocketInteractor.transform.position;
       eatingSound.Play();
 
       Destroy(currentFood.transform.gameObject);
