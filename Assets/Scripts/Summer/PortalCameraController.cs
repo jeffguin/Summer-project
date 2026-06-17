@@ -13,7 +13,7 @@ public class PortalCameraController : MonoBehaviour
     void Awake()
     {
         cam = GetComponent<Camera>();
-        // Reset matrices to ensure always starting from a clean slate
+        // Reset matrices to ensure we start from a clean slate
         cam.ResetProjectionMatrix();
         cam.ResetWorldToCameraMatrix();
     }
@@ -63,7 +63,7 @@ public class PortalCameraController : MonoBehaviour
         cam.projectionMatrix = Matrix4x4.Frustum(left, right, bottom, top, near, far);
 
         // --- 5. OBLIQUE NEAR CLIP PLANE ---
-        // slices objects perfectly at the screen surface
+        // This slices objects perfectly at the screen surface
         Vector3 cameraSpaceNormal = cam.worldToCameraMatrix.MultiplyVector(vn);
         Vector3 cameraSpacePoint = cam.worldToCameraMatrix.MultiplyPoint(bl);
         float distanceToPlane = -Vector3.Dot(cameraSpaceNormal, cameraSpacePoint);
