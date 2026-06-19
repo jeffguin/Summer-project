@@ -1411,6 +1411,11 @@ Mesh:
     offset: 0
     size: 0
     path: 
+--- !u!4 &177176166 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 26395853294817331, guid: 6705275b53b37e34d893ad4a866a7f60, type: 3}
+  m_PrefabInstance: {fileID: 3184711067476818025}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &188208438 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8307843899389422634, guid: 903bd0f9bcf5abd43a1a3153a333a5cd, type: 3}
@@ -11525,6 +11530,11 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -5337042949480413155, guid: 903bd0f9bcf5abd43a1a3153a333a5cd, type: 3}
   m_PrefabInstance: {fileID: 1561862974}
   m_PrefabAsset: {fileID: 0}
+--- !u!4 &780073195 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2018691399685091674, guid: 6705275b53b37e34d893ad4a866a7f60, type: 3}
+  m_PrefabInstance: {fileID: 3184711067476818025}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &787236183
 GameObject:
   m_ObjectHideFlags: 0
@@ -14613,6 +14623,71 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -7998776102542620645, guid: 903bd0f9bcf5abd43a1a3153a333a5cd, type: 3}
   m_PrefabInstance: {fileID: 1561862974}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1044326710
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1044326713}
+  - component: {fileID: 1044326712}
+  - component: {fileID: 1044326711}
+  m_Layer: 0
+  m_Name: Eye controller (this one for Sui)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1044326711
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1044326710}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 732dcee9a95949e4b9dd0cf598cfa731, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  controller: {fileID: 1044326712}
+--- !u!114 &1044326712
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1044326710}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bddf4f08b6ea139409d05128bc674071, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  leftEye: {fileID: 177176166}
+  rightEye: {fileID: 780073195}
+  maxYaw: 25
+  maxPitch: 20
+  smoothSpeed: 10
+  gazeX: 0
+  gazeY: 0
+--- !u!4 &1044326713
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1044326710}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.4858745, y: 0.9822693, z: -1.5148075}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!43 &1048288756
 Mesh:
   m_ObjectHideFlags: 0
@@ -30553,3 +30628,4 @@ SceneRoots:
   - {fileID: 1559115504}
   - {fileID: 1429327451}
   - {fileID: 5234556157150024225}
+  - {fileID: 1044326713}
