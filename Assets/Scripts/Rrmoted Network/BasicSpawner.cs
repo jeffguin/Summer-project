@@ -8,14 +8,24 @@ using UnityEngine.SceneManagement;
 public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 {
 
-    [SerializeField] private NetworkPrefabRef _playerPrefab;
+    [Header("Player Prefabs")]
+    [SerializeField] private NetworkPrefabRef _actorPrefab;
+    [SerializeField] private NetworkPrefabRef _audiencePrefab;
+
+    [Header("Spawn Points")]
+    [SerializeField] private Transform _actorSpawnPoint;
+    [SerializeField] private Transform _audienceSpawnPoint;
 
     private NetworkRunner _runner;
     private Dictionary<PlayerRef, NetworkObject> _spawnedCharacters = new Dictionary<PlayerRef, NetworkObject>();
 
     async void StartGame(GameMode mode)
     {
-        _runner = gameObject.AddComponent<NetworkRunner>();
+        _runner = GetComponent<NetworkRunner>();
+        if (_runner == null)
+        {
+            _runner = gameObject.AddComponent<NetworkRunner>();
+        }
         _runner.ProvideInput = true;
         _runner.AddCallbacks(this);
 
@@ -47,23 +57,27 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     }
 
     void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player) {
-        if (runner.IsServer)
-        {
-            Vector3 spawnPosition = new Vector3(
-                (player.RawEncoded % runner.Config.Simulation.PlayerCount) * 3,
-                1,
-                0
-            );
+        if (!runner.IsServer)
+            return;
 
-            NetworkObject networkPlayerObject = runner.Spawn(
-                _playerPrefab,
-                spawnPosition,
-                Quaternion.identity,
-                player
-            );
+        // Demo阶段：Host是演员，Join是观众
+        bool isActor = player == runner.LocalPlayer;
 
-            _spawnedCharacters.Add(player, networkPlayerObject);
-        }
+        NetworkPrefabRef selectedPrefab =
+            isActor ? _actorPrefab : _audiencePrefab;
+
+        Transform selectedSpawnPoint =
+            isActor ? _actorSpawnPoint : _audienceSpawnPoint;
+
+        NetworkObject playerObject = runner.Spawn(
+            selectedPrefab,
+            selectedSpawnPoint.position,
+            selectedSpawnPoint.rotation,
+            player
+        );
+
+        runner.SetPlayerObject(player, playerObject);
+        _spawnedCharacters[player] = playerObject;
     }
     void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player) {
         if (_spawnedCharacters.TryGetValue(player, out NetworkObject networkObject))
