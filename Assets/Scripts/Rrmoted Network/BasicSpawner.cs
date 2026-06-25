@@ -7,25 +7,32 @@ using UnityEngine.SceneManagement;
 
 public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 {
-
     [Header("Player Prefabs")]
     [SerializeField] private NetworkPrefabRef _actorPrefab;
     [SerializeField] private NetworkPrefabRef _audiencePrefab;
+
+    [Header("WebRTC Signal Hub")]
+    [SerializeField] private NetworkPrefabRef _webRtcSignalHubPrefab;
 
     [Header("Spawn Points")]
     [SerializeField] private Transform _actorSpawnPoint;
     [SerializeField] private Transform _audienceSpawnPoint;
 
     private NetworkRunner _runner;
-    private Dictionary<PlayerRef, NetworkObject> _spawnedCharacters = new Dictionary<PlayerRef, NetworkObject>();
+    private NetworkObject _webRtcSignalHubObject;
+
+    private Dictionary<PlayerRef, NetworkObject> _spawnedCharacters =
+        new Dictionary<PlayerRef, NetworkObject>();
 
     async void StartGame(GameMode mode)
     {
         _runner = GetComponent<NetworkRunner>();
+
         if (_runner == null)
         {
             _runner = gameObject.AddComponent<NetworkRunner>();
         }
+
         _runner.ProvideInput = true;
         _runner.AddCallbacks(this);
 
@@ -44,30 +51,41 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     {
         if (_runner == null)
         {
-            if (GUI.Button(new Rect(0, 0, 200, 40), "Host"))
+            if (GUI.Button(new Rect(0, 0, 240, 45), "Start Audience Host"))
             {
                 StartGame(GameMode.Host);
             }
 
-            if (GUI.Button(new Rect(0, 40, 200, 40), "Join"))
+            if (GUI.Button(new Rect(0, 50, 240, 45), "Join as Actor"))
             {
                 StartGame(GameMode.Client);
             }
         }
     }
 
-    void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player) {
+    void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+    {
         if (!runner.IsServer)
             return;
 
-        // Demo阶段：Host是演员，Join是观众
-        bool isActor = player == runner.LocalPlayer;
+        SpawnWebRtcSignalHubIfNeeded(runner);
+
+        // 当前 WebRTC 测试规则：
+        // Host = Audience PC / Webcam Sender
+        // Client = Actor / Video Receiver
+        bool isAudience = player == runner.LocalPlayer;
 
         NetworkPrefabRef selectedPrefab =
-            isActor ? _actorPrefab : _audiencePrefab;
+            isAudience ? _audiencePrefab : _actorPrefab;
 
         Transform selectedSpawnPoint =
-            isActor ? _actorSpawnPoint : _audienceSpawnPoint;
+            isAudience ? _audienceSpawnPoint : _actorSpawnPoint;
+
+        if (selectedSpawnPoint == null)
+        {
+            Debug.LogError("Spawn point is missing. Please assign Actor/Audience spawn points.");
+            return;
+        }
 
         NetworkObject playerObject = runner.Spawn(
             selectedPrefab,
@@ -78,15 +96,45 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
         runner.SetPlayerObject(player, playerObject);
         _spawnedCharacters[player] = playerObject;
+
+        Debug.Log(
+            isAudience
+                ? "Audience player spawned."
+                : "Actor player spawned."
+        );
     }
-    void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player) {
+
+    private void SpawnWebRtcSignalHubIfNeeded(NetworkRunner runner)
+    {
+        if (_webRtcSignalHubObject != null)
+            return;
+
+        if (_webRtcSignalHubPrefab == default)
+        {
+            Debug.LogWarning("WebRtcSignalHub prefab is not assigned.");
+            return;
+        }
+
+        _webRtcSignalHubObject = runner.Spawn(
+            _webRtcSignalHubPrefab,
+            Vector3.zero,
+            Quaternion.identity
+        );
+
+        Debug.Log("WebRtcSignalHub spawned by Host.");
+    }
+
+    void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+    {
         if (_spawnedCharacters.TryGetValue(player, out NetworkObject networkObject))
         {
             runner.Despawn(networkObject);
             _spawnedCharacters.Remove(player);
         }
     }
-    void INetworkRunnerCallbacks.OnInput(NetworkRunner runner, NetworkInput input) {
+
+    void INetworkRunnerCallbacks.OnInput(NetworkRunner runner, NetworkInput input)
+    {
         var data = new NetworkInputData();
 
         if (Input.GetKey(KeyCode.W))
@@ -103,7 +151,8 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
         input.Set(data);
     }
-    void INetworkRunnerCallbacks.OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) {  }
+
+    void INetworkRunnerCallbacks.OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
     void INetworkRunnerCallbacks.OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
     void INetworkRunnerCallbacks.OnConnectedToServer(NetworkRunner runner) { }
     void INetworkRunnerCallbacks.OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
@@ -119,7 +168,4 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     void INetworkRunnerCallbacks.OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
     void INetworkRunnerCallbacks.OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ArraySegment<byte> data) { }
     void INetworkRunnerCallbacks.OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress) { }
-
-
-
 }
