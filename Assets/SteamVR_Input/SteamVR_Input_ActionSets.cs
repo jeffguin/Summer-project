@@ -17,23 +17,15 @@ namespace Valve.VR
     public partial class SteamVR_Actions
     {
         
-        private static SteamVR_Input_ActionSet_audience p_audience;
-        
         private static SteamVR_Input_ActionSet_platformer p_platformer;
         
         private static SteamVR_Input_ActionSet_buggy p_buggy;
         
         private static SteamVR_Input_ActionSet_mixedreality p_mixedreality;
         
-        private static SteamVR_Input_ActionSet_NewSet p_NewSet;
+        private static SteamVR_Input_ActionSet_default p__default;
         
-        public static SteamVR_Input_ActionSet_audience audience
-        {
-            get
-            {
-                return SteamVR_Actions.p_audience.GetCopy<SteamVR_Input_ActionSet_audience>();
-            }
-        }
+        private static SteamVR_Input_ActionSet_NewSet p_NewSet;
         
         public static SteamVR_Input_ActionSet_platformer platformer
         {
@@ -59,6 +51,14 @@ namespace Valve.VR
             }
         }
         
+        public static SteamVR_Input_ActionSet_default _default
+        {
+            get
+            {
+                return SteamVR_Actions.p__default.GetCopy<SteamVR_Input_ActionSet_default>();
+            }
+        }
+        
         public static SteamVR_Input_ActionSet_NewSet NewSet
         {
             get
@@ -69,16 +69,16 @@ namespace Valve.VR
         
         private static void StartPreInitActionSets()
         {
-            SteamVR_Actions.p_audience = ((SteamVR_Input_ActionSet_audience)(SteamVR_ActionSet.Create<SteamVR_Input_ActionSet_audience>("/actions/audience")));
             SteamVR_Actions.p_platformer = ((SteamVR_Input_ActionSet_platformer)(SteamVR_ActionSet.Create<SteamVR_Input_ActionSet_platformer>("/actions/platformer")));
             SteamVR_Actions.p_buggy = ((SteamVR_Input_ActionSet_buggy)(SteamVR_ActionSet.Create<SteamVR_Input_ActionSet_buggy>("/actions/buggy")));
             SteamVR_Actions.p_mixedreality = ((SteamVR_Input_ActionSet_mixedreality)(SteamVR_ActionSet.Create<SteamVR_Input_ActionSet_mixedreality>("/actions/mixedreality")));
+            SteamVR_Actions.p__default = ((SteamVR_Input_ActionSet_default)(SteamVR_ActionSet.Create<SteamVR_Input_ActionSet_default>("/actions/default")));
             SteamVR_Actions.p_NewSet = ((SteamVR_Input_ActionSet_NewSet)(SteamVR_ActionSet.Create<SteamVR_Input_ActionSet_NewSet>("/actions/NewSet")));
             Valve.VR.SteamVR_Input.actionSets = new Valve.VR.SteamVR_ActionSet[] {
-                    SteamVR_Actions.audience,
                     SteamVR_Actions.platformer,
                     SteamVR_Actions.buggy,
                     SteamVR_Actions.mixedreality,
+                    SteamVR_Actions._default,
                     SteamVR_Actions.NewSet};
         }
     }
