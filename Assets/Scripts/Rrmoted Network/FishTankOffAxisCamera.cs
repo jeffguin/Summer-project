@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
 [RequireComponent(typeof(Camera))]
 public class FishTankOffAxisCamera : MonoBehaviour
@@ -15,7 +15,11 @@ public class FishTankOffAxisCamera : MonoBehaviour
     public float nearClip = 0.01f;
     public float farClip = 1000f;
 
+    [Header("Debug")]
+    public bool debugLog = true;
+
     private Camera cam;
+    private float timer;
 
     private void Awake()
     {
@@ -27,9 +31,31 @@ public class FishTankOffAxisCamera : MonoBehaviour
     private void LateUpdate()
     {
         if (bottomLeft == null || bottomRight == null || topLeft == null || audienceEye == null)
+        {
+            Debug.LogWarning("FishTankOffAxisCamera: Missing references.");
             return;
+        }
 
         UpdateOffAxisProjection();
+
+        if (debugLog)
+        {
+            timer += Time.deltaTime;
+
+            if (timer >= 1f)
+            {
+                timer = 0f;
+
+                Debug.Log(
+                    "=== FishTank Debug ===" +
+                    "\nAudienceEye: " + audienceEye.position.ToString("F3") +
+                    "\nFishTankCamera: " + transform.position.ToString("F3") +
+                    "\nBottomLeft: " + bottomLeft.position.ToString("F3") +
+                    "\nBottomRight: " + bottomRight.position.ToString("F3") +
+                    "\nTopLeft: " + topLeft.position.ToString("F3")
+                );
+            }
+        }
     }
 
     private void UpdateOffAxisProjection()
@@ -39,21 +65,39 @@ public class FishTankOffAxisCamera : MonoBehaviour
         Vector3 pc = topLeft.position;
         Vector3 pe = audienceEye.position;
 
-        // ÆÁÄ»×ø±êÖá
+        // å…ˆè®© Camera æ— æ¡ä»¶è·Ÿéš AudienceEye
+        transform.position = pe;
+
         Vector3 vr = (pb - pa).normalized; // screen right
         Vector3 vu = (pc - pa).normalized; // screen up
-        Vector3 vn = Vector3.Cross(vr, vu).normalized; // screen normal
 
-        // ´ÓÑÛ¾¦µ½ÆÁÄ»Èı¸ö½ÇµãµÄÏòÁ¿
+        // å°è¯•è®©å±å¹•æ³•çº¿æœå‘è™šæ‹Ÿä¸–ç•Œ
+        Vector3 vn = Vector3.Cross(vu, vr).normalized;
+
         Vector3 va = pa - pe;
         Vector3 vb = pb - pe;
         Vector3 vc = pc - pe;
 
-        float d = -Vector3.Dot(va, vn);
+        float d = Vector3.Dot(va, vn);
 
+        // å¦‚æœæ–¹å‘åäº†ï¼Œè‡ªåŠ¨åè½¬æ³•çº¿
         if (d <= 0.001f)
         {
-            Debug.LogWarning("AudienceEye is behind or too close to the screen plane.");
+            vn = -vn;
+            d = Vector3.Dot(va, vn);
+        }
+
+        // å¦‚æœä»ç„¶ä¸å¯¹ï¼Œè‡³å°‘è®© Camera çœ‹å‘å±å¹•ä¸­å¿ƒ
+        if (d <= 0.001f)
+        {
+            Vector3 screenCenter = (pa + pb + pc + (pb + pc - pa)) / 4f;
+            transform.LookAt(screenCenter, vu);
+
+            Debug.LogWarning(
+                "FishTankOffAxisCamera: Invalid eye/screen relation. " +
+                "Camera is looking at screen center instead. d = " + d.ToString("F4")
+            );
+
             return;
         }
 
@@ -62,16 +106,8 @@ public class FishTankOffAxisCamera : MonoBehaviour
         float b = Vector3.Dot(vu, va) * nearClip / d;
         float t = Vector3.Dot(vu, vc) * nearClip / d;
 
-        Matrix4x4 projection = PerspectiveOffCenter(l, r, b, t, nearClip, farClip);
-
-        cam.projectionMatrix = projection;
-
-        // ÉãÏñ»úÎ»ÖÃµÈÓÚ¹ÛÖÚÑÛ¾¦Î»ÖÃ
-        transform.position = pe;
-
-        // ÉãÏñ»ú³¯ÏòÆÁÄ»·¨Ïß·½Ïò
-        Quaternion rotation = Quaternion.LookRotation(vn, vu);
-        transform.rotation = rotation;
+        cam.projectionMatrix = PerspectiveOffCenter(l, r, b, t, nearClip, farClip);
+        transform.rotation = Quaternion.LookRotation(vn, vu);
     }
 
     private Matrix4x4 PerspectiveOffCenter(
@@ -82,15 +118,14 @@ public class FishTankOffAxisCamera : MonoBehaviour
         float near,
         float far)
     {
+        Matrix4x4 m = new Matrix4x4();
+
         float x = 2.0f * near / (right - left);
         float y = 2.0f * near / (top - bottom);
         float a = (right + left) / (right - left);
         float b = (top + bottom) / (top - bottom);
         float c = -(far + near) / (far - near);
         float d = -(2.0f * far * near) / (far - near);
-        float e = -1.0f;
-
-        Matrix4x4 m = new Matrix4x4();
 
         m[0, 0] = x;
         m[0, 1] = 0;
@@ -109,7 +144,7 @@ public class FishTankOffAxisCamera : MonoBehaviour
 
         m[3, 0] = 0;
         m[3, 1] = 0;
-        m[3, 2] = e;
+        m[3, 2] = -1;
         m[3, 3] = 0;
 
         return m;
@@ -118,8 +153,6 @@ public class FishTankOffAxisCamera : MonoBehaviour
     private void OnDisable()
     {
         if (cam != null)
-        {
             cam.ResetProjectionMatrix();
-        }
     }
 }
