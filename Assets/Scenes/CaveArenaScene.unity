@@ -1391,6 +1391,7 @@ MonoBehaviour:
   _rigidbody: {fileID: 330503379}
   _kinematicWhileSelected: 0
   _throwWhenUnselected: 1
+  _forceKinematicDisabled: 0
 --- !u!54 &330503379
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -6663,6 +6664,7 @@ MonoBehaviour:
   _rigidbody: {fileID: 1094490351}
   _kinematicWhileSelected: 0
   _throwWhenUnselected: 1
+  _forceKinematicDisabled: 0
 --- !u!54 &1094490351
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -9619,6 +9621,7 @@ MonoBehaviour:
   _rigidbody: {fileID: 0}
   _kinematicWhileSelected: 1
   _throwWhenUnselected: 1
+  _forceKinematicDisabled: 0
 --- !u!43 &1409508089
 Mesh:
   m_ObjectHideFlags: 0
