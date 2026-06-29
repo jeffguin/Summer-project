@@ -1,11 +1,11 @@
 {
   "dependencies": {
     "com.meta.xr.mrutilitykit": {
-      "version": "81.0.0",
+      "version": "83.0.4",
       "depth": 1,
       "source": "registry",
       "dependencies": {
-        "com.meta.xr.sdk.core": "81.0.0",
+        "com.meta.xr.sdk.core": "83.0.4",
         "com.unity.textmeshpro": "3.0.6",
         "com.unity.ai.navigation": "1.1.4",
         "com.unity.nuget.newtonsoft-json": "3.0.2"
@@ -13,47 +13,46 @@
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.all": {
-      "version": "81.0.0",
+      "version": "83.0.4",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.meta.xr.sdk.core": "81.0.0",
-        "com.meta.xr.sdk.audio": "81.0.0",
-        "com.meta.xr.sdk.voice": "81.0.0",
-        "com.meta.xr.simulator": "81.0.0",
-        "com.meta.xr.sdk.haptics": "81.0.0",
-        "com.meta.xr.mrutilitykit": "81.0.0",
-        "com.meta.xr.sdk.platform": "81.0.0",
-        "com.meta.xr.sdk.interaction": "81.0.0",
-        "com.meta.xr.sdk.interaction.ovr": "81.0.0"
+        "com.meta.xr.sdk.core": "83.0.4",
+        "com.meta.xr.sdk.audio": "83.0.1",
+        "com.meta.xr.sdk.voice": "83.0.1",
+        "com.meta.xr.sdk.haptics": "83.0.4",
+        "com.meta.xr.mrutilitykit": "83.0.4",
+        "com.meta.xr.sdk.platform": "83.0.1",
+        "com.meta.xr.sdk.interaction": "83.0.4",
+        "com.meta.xr.sdk.interaction.ovr": "83.0.4"
       },
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.audio": {
-      "version": "81.0.0",
+      "version": "83.0.1",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.core": {
-      "version": "81.0.0",
+      "version": "83.0.4",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.haptics": {
-      "version": "81.0.0",
+      "version": "83.0.4",
       "depth": 1,
       "source": "registry",
       "dependencies": {
-        "com.meta.xr.sdk.core": "81.0.0"
+        "com.meta.xr.sdk.core": "83.0.4"
       },
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.interaction": {
-      "version": "81.0.0",
+      "version": "83.0.4",
       "depth": 1,
       "source": "registry",
       "dependencies": {
@@ -63,17 +62,28 @@
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.interaction.ovr": {
-      "version": "81.0.0",
+      "version": "83.0.4",
       "depth": 1,
       "source": "registry",
       "dependencies": {
-        "com.meta.xr.sdk.core": "81.0.0",
-        "com.meta.xr.sdk.interaction": "81.0.0"
+        "com.meta.xr.sdk.core": "83.0.4",
+        "com.meta.xr.sdk.interaction": "83.0.4"
       },
       "url": "https://packages.unity.com"
     },
+    "com.meta.xr.sdk.movement": {
+      "version": "https://github.com/oculus-samples/Unity-Movement.git#v83.0.0",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.burst": "1.8.18",
+        "com.unity.textmeshpro": "3.0.6",
+        "com.unity.ugui": "1.0.0"
+      },
+      "hash": "cc87d601514ac9e7000f592bc5ce27ed82ef669f"
+    },
     "com.meta.xr.sdk.platform": {
-      "version": "81.0.0",
+      "version": "83.0.1",
       "depth": 1,
       "source": "registry",
       "dependencies": {
@@ -82,14 +92,7 @@
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.voice": {
-      "version": "81.0.0",
-      "depth": 1,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://packages.unity.com"
-    },
-    "com.meta.xr.simulator": {
-      "version": "81.0.0",
+      "version": "83.0.1",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
@@ -335,7 +338,7 @@
     },
     "com.unity.textmeshpro": {
       "version": "5.0.0",
-      "depth": 2,
+      "depth": 1,
       "source": "builtin",
       "dependencies": {
         "com.unity.ugui": "2.0.0"
