@@ -1,3 +1,5 @@
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+
 using UnityEngine;
 using Valve.VR;
 
@@ -123,3 +125,18 @@ public class DirectOpenVRTrackerReader : MonoBehaviour
         }
     }
 }
+
+#else
+
+using UnityEngine;
+
+public class DirectOpenVRTrackerReader : MonoBehaviour
+{
+    private void Awake()
+    {
+        Debug.LogWarning("DirectOpenVRTrackerReader is disabled on this platform. It only runs on Windows / Windows Editor with SteamVR.");
+        enabled = false;
+    }
+}
+
+#endif

@@ -31,6 +31,27 @@ public class WebRtcVideoReceiver : MonoBehaviour
         public int sdpMLineIndex;
     }
 
+
+    public void StopReceiving()
+    {
+        remoteDescriptionSet = false;
+        pendingCandidates.Clear();
+
+        if (videoDisplayScreen != null)
+        {
+            videoDisplayScreen.ClearTexture();
+        }
+
+        if (peerConnection != null)
+        {
+            peerConnection.Close();
+            peerConnection.Dispose();
+            peerConnection = null;
+        }
+
+        Debug.Log("WebRTC receiver stopped.");
+    }
+
     private void Start()
     {
         webRtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
@@ -224,11 +245,7 @@ public class WebRtcVideoReceiver : MonoBehaviour
             WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
         }
 
-        if (peerConnection != null)
-        {
-            peerConnection.Close();
-            peerConnection.Dispose();
-        }
+        StopReceiving();
 
         if (webRtcUpdateCoroutine != null)
         {

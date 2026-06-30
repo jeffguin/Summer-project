@@ -1,3 +1,5 @@
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+
 using UnityEngine;
 using Valve.VR;
 
@@ -67,3 +69,18 @@ public class ViveTrackerPoseReader : MonoBehaviour
         }
     }
 }
+
+#else
+
+using UnityEngine;
+
+public class ViveTrackerPoseReader : MonoBehaviour
+{
+    private void Awake()
+    {
+        Debug.LogWarning("ViveTrackerPoseReader is disabled on this platform. It only runs on Windows / Windows Editor with SteamVR.");
+        enabled = false;
+    }
+}
+
+#endif

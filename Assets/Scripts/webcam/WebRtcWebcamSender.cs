@@ -5,11 +5,12 @@ using UnityEngine;
 using UnityEngine.UI;
 using Fusion;
 
-
 public class WebRtcWebcamSender : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private LocalWebcamManager localWebcamManager;
+
+    [Header("Optional Local Test UI")]
     [SerializeField] private Button startStreamButton;
 
     private RTCPeerConnection peerConnection;
@@ -17,6 +18,7 @@ public class WebRtcWebcamSender : MonoBehaviour
     private Coroutine webRtcUpdateCoroutine;
 
     private bool remoteDescriptionSet = false;
+    private bool isStreaming = false;
 
     [Serializable]
     private class SdpSignal
@@ -36,6 +38,7 @@ public class WebRtcWebcamSender : MonoBehaviour
     {
         webRtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
 
+        // Optional debug button. Final audience flow does not need this.
         if (startStreamButton != null)
         {
             startStreamButton.onClick.AddListener(StartWebcamStream);
@@ -57,6 +60,12 @@ public class WebRtcWebcamSender : MonoBehaviour
 
     public void StartWebcamStream()
     {
+        if (isStreaming)
+        {
+            Debug.LogWarning("Sender is already streaming.");
+            return;
+        }
+
         if (WebRtcSignalHub.Instance == null)
         {
             Debug.LogWarning("SignalHub is not ready.");
@@ -67,7 +76,13 @@ public class WebRtcWebcamSender : MonoBehaviour
 
         if (target == PlayerRef.None)
         {
-            Debug.LogWarning("No actor client found. Join actor first.");
+            Debug.LogWarning("No receiver player found.");
+            return;
+        }
+
+        if (localWebcamManager == null)
+        {
+            Debug.LogWarning("LocalWebcamManager is not assigned.");
             return;
         }
 
@@ -119,7 +134,30 @@ public class WebRtcWebcamSender : MonoBehaviour
         string json = JsonUtility.ToJson(signal);
         WebRtcSignalHub.Instance.SendSignal(target, "offer", json);
 
+        isStreaming = true;
+
         Debug.Log("WebRTC offer sent.");
+    }
+
+    public void StopWebcamStream()
+    {
+        isStreaming = false;
+        remoteDescriptionSet = false;
+
+        if (videoTrack != null)
+        {
+            videoTrack.Dispose();
+            videoTrack = null;
+        }
+
+        if (peerConnection != null)
+        {
+            peerConnection.Close();
+            peerConnection.Dispose();
+            peerConnection = null;
+        }
+
+        Debug.Log("WebRTC sender stopped.");
     }
 
     private void CreatePeerConnection()
@@ -181,6 +219,12 @@ public class WebRtcWebcamSender : MonoBehaviour
 
     private IEnumerator HandleAnswer(string payload)
     {
+        if (peerConnection == null)
+        {
+            Debug.LogWarning("Sender peerConnection is null when answer received.");
+            yield break;
+        }
+
         SdpSignal signal = JsonUtility.FromJson<SdpSignal>(payload);
 
         RTCSessionDescription answer = new RTCSessionDescription
@@ -207,7 +251,7 @@ public class WebRtcWebcamSender : MonoBehaviour
 
     private void AddRemoteIceCandidate(string payload)
     {
-        if (!remoteDescriptionSet)
+        if (!remoteDescriptionSet || peerConnection == null)
             return;
 
         IceSignal signal = JsonUtility.FromJson<IceSignal>(payload);
@@ -229,16 +273,7 @@ public class WebRtcWebcamSender : MonoBehaviour
             WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
         }
 
-        if (videoTrack != null)
-        {
-            videoTrack.Dispose();
-        }
-
-        if (peerConnection != null)
-        {
-            peerConnection.Close();
-            peerConnection.Dispose();
-        }
+        StopWebcamStream();
 
         if (webRtcUpdateCoroutine != null)
         {

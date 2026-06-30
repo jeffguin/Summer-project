@@ -5,12 +5,12 @@ using TMPro;
 
 public class LocalWebcamManager : MonoBehaviour
 {
-    [Header("UI")]
+    [Header("Optional Local UI")]
     [SerializeField] private TMP_Dropdown cameraDropdown;
     [SerializeField] private Button startButton;
     [SerializeField] private Button stopButton;
 
-    [Header("Display")]
+    [Header("Optional Local Preview Display")]
     [SerializeField] private VideoDisplayScreen videoDisplayScreen;
 
     [Header("Webcam Settings")]
@@ -24,6 +24,10 @@ public class LocalWebcamManager : MonoBehaviour
 
     private void Start()
     {
+        RefreshCameraList();
+
+        // These UI bindings are optional.
+        // In the final Audience Client flow, these buttons will usually be null or inactive.
         if (startButton != null)
         {
             startButton.onClick.AddListener(StartSelectedWebcam);
@@ -38,11 +42,9 @@ public class LocalWebcamManager : MonoBehaviour
         {
             cameraDropdown.onValueChanged.AddListener(OnCameraSelected);
         }
-
-        RefreshCameraList();
     }
 
-    private void RefreshCameraList()
+    public void RefreshCameraList()
     {
         devices = WebCamTexture.devices;
 
@@ -72,6 +74,20 @@ public class LocalWebcamManager : MonoBehaviour
 
         cameraDropdown.value = selectedCameraIndex;
         cameraDropdown.RefreshShownValue();
+    }
+
+    public string[] GetCameraNames()
+    {
+        devices = WebCamTexture.devices;
+
+        string[] names = new string[devices.Length];
+
+        for (int i = 0; i < devices.Length; i++)
+        {
+            names[i] = devices[i].name;
+        }
+
+        return names;
     }
 
     private int FindLikelyExternalCameraIndex()
@@ -107,17 +123,26 @@ public class LocalWebcamManager : MonoBehaviour
 
     public void StartSelectedWebcam()
     {
+        StartCameraByIndex(selectedCameraIndex);
+    }
+
+    public void StartCameraByIndex(int cameraIndex)
+    {
+        devices = WebCamTexture.devices;
+
         if (devices == null || devices.Length == 0)
         {
             Debug.LogWarning("LocalWebcamManager: No webcam device available.");
             return;
         }
 
-        if (selectedCameraIndex < 0 || selectedCameraIndex >= devices.Length)
+        if (cameraIndex < 0 || cameraIndex >= devices.Length)
         {
-            Debug.LogWarning("LocalWebcamManager: Invalid camera index.");
+            Debug.LogWarning("LocalWebcamManager: Invalid camera index: " + cameraIndex);
             return;
         }
+
+        selectedCameraIndex = cameraIndex;
 
         StopWebcam();
 
@@ -132,6 +157,8 @@ public class LocalWebcamManager : MonoBehaviour
 
         webcamTexture.Play();
 
+        // Local preview is optional.
+        // In final audience flow, this can be null.
         if (videoDisplayScreen != null)
         {
             videoDisplayScreen.SetTexture(webcamTexture);

@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using Fusion;
 using Fusion.Sockets;
@@ -14,6 +14,10 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         AudienceClient
     }
 
+    [Header("Auto Start")]
+    [SerializeField] private bool _autoStart = false;
+    [SerializeField] private bool _autoStartAsActorHost = true;
+
     [Header("Network Prefabs")]
     [SerializeField] private NetworkPrefabRef _actorAvatarPrefab;
 
@@ -24,20 +28,36 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private Transform _actorSpawnPoint;
 
     [Header("Local Systems")]
-    [Tooltip("ÑİÔ±¶Ë±¾µØÏµÍ³¡£ºóĞø·Å Quest Pro / mocap / face / eye / hand tracking rig¡£")]
+    [Tooltip("æ¼”å‘˜ç«¯æœ¬åœ°ç³»ç»Ÿã€‚åç»­æ”¾ Quest Pro / mocap / face / eye / hand tracking rigã€‚")]
     [SerializeField] private GameObject _actorLocalRig;
 
-    [Tooltip("¹ÛÖÚ¶Ë±¾µØ Fish Tank ÏµÍ³¡£ÍÏÈë AudienceFishTankRig ¸ùÎïÌå¡£")]
+    [Tooltip("è§‚ä¼—ç«¯æœ¬åœ° Fish Tank ç³»ç»Ÿã€‚æ‹–å…¥ AudienceFishTankRig æ ¹ç‰©ä½“ã€‚")]
     [SerializeField] private GameObject _audienceFishTankRig;
 
+    [Header("Webcam Role Objects")]
+    [Tooltip("æ¼”å‘˜ç«¯æ§åˆ¶èœå•ã€‚åŒ…å« CameraDropdown / StartButton / StopButtonã€‚")]
+    [SerializeField] private GameObject _performerMenu;
+
+    [Tooltip("è§‚ä¼—ç«¯æœ¬åœ°æ‘„åƒå¤´ç®¡ç†å™¨ã€‚å®é™…è¿è¡Œåœ¨ Audience Clientã€‚")]
+    [SerializeField] private GameObject _webcamManager;
+
+    [Tooltip("è§‚ä¼—ç«¯ WebRTC å‘é€ç«¯ã€‚å®é™…è¿è¡Œåœ¨ Audience Clientã€‚")]
+    [SerializeField] private GameObject _audienceWebRtcSender;
+
+    [Tooltip("æ¼”å‘˜ç«¯ WebRTC æ¥æ”¶ç«¯ã€‚å®é™…è¿è¡Œåœ¨ Actor Hostã€‚")]
+    [SerializeField] private GameObject _actorWebRtcReceiver;
+
+    [Tooltip("æ¼”å‘˜ç«¯å”¯ä¸€ webcam æ˜¾ç¤ºå±ã€‚æ˜¾ç¤ºè§‚ä¼—ç«¯æ‘„åƒå¤´ç”»é¢ã€‚")]
+    [SerializeField] private GameObject _webcamScreen;
+
     [Header("Actor Local Sources")]
-    [Tooltip("ÑİÔ±Í·²¿×·×ÙÔ´¡£ºóĞø¿É°ó¶¨ CenterEyeAnchor¡£")]
+    [Tooltip("æ¼”å‘˜å¤´éƒ¨è¿½è¸ªæºã€‚åç»­å¯ç»‘å®š CenterEyeAnchorã€‚")]
     [SerializeField] private Transform _actorHeadSource;
 
-    [Tooltip("ÑİÔ±×óÊÖ×·×ÙÔ´¡£ºóĞø¿É°ó¶¨ LeftHandAnchor¡£")]
+    [Tooltip("æ¼”å‘˜å·¦æ‰‹è¿½è¸ªæºã€‚åç»­å¯ç»‘å®š LeftHandAnchorã€‚")]
     [SerializeField] private Transform _actorLeftHandSource;
 
-    [Tooltip("ÑİÔ±ÓÒÊÖ×·×ÙÔ´¡£ºóĞø¿É°ó¶¨ RightHandAnchor¡£")]
+    [Tooltip("æ¼”å‘˜å³æ‰‹è¿½è¸ªæºã€‚åç»­å¯ç»‘å®š RightHandAnchorã€‚")]
     [SerializeField] private Transform _actorRightHandSource;
 
     [Header("Session Settings")]
@@ -80,19 +100,64 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         });
     }
 
+
+    private void Start()
+    {
+        if (_autoStart)
+        {
+            if (_autoStartAsActorHost)
+            {
+                StartGame(GameMode.Host, LocalRole.ActorHost);
+            }
+            else
+            {
+                StartGame(GameMode.Client, LocalRole.AudienceClient);
+            }
+        }
+    }
+
     private void ApplyLocalRole()
     {
         bool isActor = _localRole == LocalRole.ActorHost;
         bool isAudience = _localRole == LocalRole.AudienceClient;
 
+        // Actor local tracking / mocap system
         if (_actorLocalRig != null)
         {
             _actorLocalRig.SetActive(isActor);
         }
 
+        // Audience Fish Tank viewing system
         if (_audienceFishTankRig != null)
         {
             _audienceFishTankRig.SetActive(isAudience);
+        }
+
+        // Performer side: control menu, receiver, and display screen
+        if (_performerMenu != null)
+        {
+            _performerMenu.SetActive(isActor);
+        }
+
+        if (_actorWebRtcReceiver != null)
+        {
+            _actorWebRtcReceiver.SetActive(isActor);
+        }
+
+        if (_webcamScreen != null)
+        {
+            _webcamScreen.SetActive(isActor);
+        }
+
+        // Audience side: actual webcam capture and WebRTC sender
+        if (_webcamManager != null)
+        {
+            _webcamManager.SetActive(isAudience);
+        }
+
+        if (_audienceWebRtcSender != null)
+        {
+            _audienceWebRtcSender.SetActive(isAudience);
         }
 
         Debug.Log($"Local role applied: {_localRole}");
@@ -225,22 +290,8 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     void INetworkRunnerCallbacks.OnInput(NetworkRunner runner, NetworkInput input)
     {
         NetworkInputData data = new NetworkInputData();
-
-        if (Input.GetKey(KeyCode.W))
-            data.Direction += Vector3.forward;
-
-        if (Input.GetKey(KeyCode.S))
-            data.Direction += Vector3.back;
-
-        if (Input.GetKey(KeyCode.A))
-            data.Direction += Vector3.left;
-
-        if (Input.GetKey(KeyCode.D))
-            data.Direction += Vector3.right;
-
         input.Set(data);
     }
-
     void INetworkRunnerCallbacks.OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
 
     void INetworkRunnerCallbacks.OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
