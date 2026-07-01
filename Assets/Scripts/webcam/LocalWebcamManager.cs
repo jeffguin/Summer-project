@@ -46,6 +46,17 @@ public class LocalWebcamManager : MonoBehaviour
 
     public void RefreshCameraList()
     {
+
+        devices = WebCamTexture.devices;
+
+        Debug.Log("Webcam device count: " + devices.Length);
+
+        for (int i = 0; i < devices.Length; i++)
+        {
+            Debug.Log("Webcam " + i + ": " + devices[i].name);
+        }
+
+
         devices = WebCamTexture.devices;
 
         if (cameraDropdown == null)

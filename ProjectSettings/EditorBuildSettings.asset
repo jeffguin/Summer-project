@@ -23,9 +23,18 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/fishtanktest.unity
     guid: a35611afc3146034db240695d2315d9d
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Main.unity
     guid: 848bd06f6a54fc24eac2eed39791c283
+  - enabled: 0
+    path: "Assets/Samples/Meta XR Interaction \u200BSDK/83.0.4/Example Scenes/RayExamples.unity"
+    guid: 1b2d3f90c0f50b94cb910c66c773d00d
+  - enabled: 0
+    path: Assets/Scenes/Main_Actor_Quest.unity
+    guid: c05af72324a0e714285f57b77c9217fe
+  - enabled: 1
+    path: Assets/Scenes/Main_Audience_Windows.unity
+    guid: c5d7ff082eb1fe6448520eafd3eb6978
   m_configObjects:
     Unity.XR.OpenVR.Settings: {fileID: 11400000, guid: b13f30adf4c0c934da0a31cb74896ca5, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
