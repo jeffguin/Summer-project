@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Fusion;
 using Fusion.Sockets;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 {
@@ -18,17 +17,30 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private bool _autoStart = false;
     [SerializeField] private bool _autoStartAsActorHost = true;
 
+    [Header("Client Retry")]
+    [Tooltip("Audience Client 找不到 Host 房间时是否自动重试。")]
+    [SerializeField] private bool _retryClientJoin = true;
+
+    [Tooltip("Audience Client 每次重试加入房间的间隔秒数。")]
+    [SerializeField] private float _clientRetryDelay = 3f;
+
+    [Tooltip("最大重试次数。设置为 0 表示无限重试。")]
+    [SerializeField] private int _maxClientRetryCount = 0;
+
     [Header("Network Prefabs")]
     [SerializeField] private NetworkPrefabRef _actorAvatarPrefab;
 
     [Header("WebRTC Signal Hub")]
     [SerializeField] private NetworkPrefabRef _webRtcSignalHubPrefab;
 
+    [Header("Webcam Control Hub")]
+    [SerializeField] private NetworkPrefabRef _networkWebcamControlHubPrefab;
+
     [Header("Spawn Points")]
     [SerializeField] private Transform _actorSpawnPoint;
 
     [Header("Local Systems")]
-    [Tooltip("演员端本地系统。后续放 Quest Pro / mocap / face / eye / hand tracking rig。")]
+    [Tooltip("演员端本地系统。Quest / OVR / mocap / face / eye / hand tracking rig。")]
     [SerializeField] private GameObject _actorLocalRig;
 
     [Tooltip("观众端本地 Fish Tank 系统。拖入 AudienceFishTankRig 根物体。")]
@@ -43,6 +55,9 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
     [Tooltip("观众端 WebRTC 发送端。实际运行在 Audience Client。")]
     [SerializeField] private GameObject _audienceWebRtcSender;
+
+    [Tooltip("观众端 webcam runtime。接收 Performer 命令后启动本地 webcam。")]
+    [SerializeField] private GameObject _audienceWebcamRuntime;
 
     [Tooltip("演员端 WebRTC 接收端。实际运行在 Actor Host。")]
     [SerializeField] private GameObject _actorWebRtcReceiver;
@@ -63,17 +78,54 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [Header("Session Settings")]
     [SerializeField] private string _sessionName = "TestRoom";
 
+    [Tooltip("如果两个 Build Profile 都只放一个场景，建议保持为 0。")]
+    [SerializeField] private int _sceneBuildIndex = 0;
+
     private NetworkRunner _runner;
+
     private NetworkObject _webRtcSignalHubObject;
+    private NetworkObject _networkWebcamControlHubObject;
     private NetworkObject _actorAvatarObject;
 
     private LocalRole _localRole = LocalRole.None;
 
+    private int _clientRetryCount = 0;
+    private bool _isStartingGame = false;
+
     private readonly Dictionary<PlayerRef, NetworkObject> _spawnedObjects =
         new Dictionary<PlayerRef, NetworkObject>();
 
+    private void Start()
+    {
+        if (!_autoStart)
+            return;
+
+        if (_autoStartAsActorHost)
+        {
+            StartGame(GameMode.Host, LocalRole.ActorHost);
+        }
+        else
+        {
+            StartGame(GameMode.Client, LocalRole.AudienceClient);
+        }
+    }
+
     private async void StartGame(GameMode mode, LocalRole role)
     {
+        if (_isStartingGame)
+        {
+            Debug.LogWarning("BasicSpawner: StartGame is already running. Ignored.");
+            return;
+        }
+
+        if (_runner != null)
+        {
+            Debug.LogWarning("BasicSpawner: NetworkRunner already exists. StartGame ignored.");
+            return;
+        }
+
+        _isStartingGame = true;
+
         _localRole = role;
         ApplyLocalRole();
 
@@ -87,33 +139,103 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         _runner.ProvideInput = true;
         _runner.AddCallbacks(this);
 
-        SceneRef scene = SceneRef.FromIndex(SceneManager.GetActiveScene().buildIndex);
+        SceneRef scene = SceneRef.FromIndex(_sceneBuildIndex);
 
-        Debug.Log($"Starting Fusion. Mode: {mode}, Role: {_localRole}");
+        Debug.Log(
+            $"BasicSpawner: Starting Fusion. " +
+            $"Mode: {mode}, Role: {_localRole}, Session: {_sessionName}, SceneIndex: {_sceneBuildIndex}"
+        );
 
-        await _runner.StartGame(new StartGameArgs()
+        StartGameResult result = await _runner.StartGame(new StartGameArgs()
         {
             GameMode = mode,
             SessionName = _sessionName,
             Scene = scene,
             SceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>()
         });
-    }
 
+        _isStartingGame = false;
 
-    private void Start()
-    {
-        if (_autoStart)
+        if (result.Ok)
         {
-            if (_autoStartAsActorHost)
+            _clientRetryCount = 0;
+            Debug.Log("BasicSpawner: Fusion StartGame succeeded.");
+        }
+        else
+        {
+            Debug.LogError($"BasicSpawner: Fusion StartGame failed. Reason: {result.ShutdownReason}");
+
+            bool shouldRetry =
+                _retryClientJoin &&
+                mode == GameMode.Client &&
+                result.ShutdownReason == ShutdownReason.GameNotFound &&
+                CanRetryClientJoin();
+
+            if (shouldRetry)
             {
-                StartGame(GameMode.Host, LocalRole.ActorHost);
+                _clientRetryCount++;
+
+                Debug.LogWarning(
+                    $"BasicSpawner: Game not found. " +
+                    $"Retrying audience client join in {_clientRetryDelay} seconds. " +
+                    $"Retry count: {_clientRetryCount}"
+                );
+
+                Invoke(nameof(RetryJoinAsAudience), _clientRetryDelay);
             }
             else
             {
-                StartGame(GameMode.Client, LocalRole.AudienceClient);
+                Debug.LogError("BasicSpawner: StartGame failed and will not retry.");
             }
         }
+    }
+
+    private bool CanRetryClientJoin()
+    {
+        if (_maxClientRetryCount <= 0)
+            return true;
+
+        return _clientRetryCount < _maxClientRetryCount;
+    }
+
+    private void RetryJoinAsAudience()
+    {
+        Debug.Log("BasicSpawner: Retrying join as Audience Client...");
+
+        CleanupRunner();
+
+        StartGame(GameMode.Client, LocalRole.AudienceClient);
+    }
+
+    private void CleanupRunner()
+    {
+        if (_runner == null)
+            return;
+
+        try
+        {
+            _runner.RemoveCallbacks(this);
+
+            NetworkSceneManagerDefault sceneManager =
+                _runner.GetComponent<NetworkSceneManagerDefault>();
+
+            if (sceneManager != null)
+            {
+                Destroy(sceneManager);
+            }
+
+            Destroy(_runner);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("BasicSpawner: Runner cleanup exception: " + exception.Message);
+        }
+
+        _runner = null;
+        _webRtcSignalHubObject = null;
+        _networkWebcamControlHubObject = null;
+        _actorAvatarObject = null;
+        _spawnedObjects.Clear();
     }
 
     private void ApplyLocalRole()
@@ -121,19 +243,16 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         bool isActor = _localRole == LocalRole.ActorHost;
         bool isAudience = _localRole == LocalRole.AudienceClient;
 
-        // Actor local tracking / mocap system
         if (_actorLocalRig != null)
         {
             _actorLocalRig.SetActive(isActor);
         }
 
-        // Audience Fish Tank viewing system
         if (_audienceFishTankRig != null)
         {
             _audienceFishTankRig.SetActive(isAudience);
         }
 
-        // Performer side: control menu, receiver, and display screen
         if (_performerMenu != null)
         {
             _performerMenu.SetActive(isActor);
@@ -149,7 +268,6 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             _webcamScreen.SetActive(isActor);
         }
 
-        // Audience side: actual webcam capture and WebRTC sender
         if (_webcamManager != null)
         {
             _webcamManager.SetActive(isAudience);
@@ -160,12 +278,17 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             _audienceWebRtcSender.SetActive(isAudience);
         }
 
-        Debug.Log($"Local role applied: {_localRole}");
+        if (_audienceWebcamRuntime != null)
+        {
+            _audienceWebcamRuntime.SetActive(isAudience);
+        }
+
+        Debug.Log($"BasicSpawner: Local role applied: {_localRole}");
     }
 
     private void OnGUI()
     {
-        if (_runner != null)
+        if (_runner != null || _isStartingGame)
             return;
 
         if (GUI.Button(new Rect(0, 0, 260, 45), "Start as Actor Host"))
@@ -181,22 +304,68 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
     void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
+        Debug.Log(
+            $"BasicSpawner: Player joined: {player}. " +
+            $"IsServer: {runner.IsServer}, LocalPlayer: {runner.LocalPlayer}"
+        );
+
         if (!runner.IsServer)
             return;
 
         SpawnWebRtcSignalHubIfNeeded(runner);
+        SpawnNetworkWebcamControlHubIfNeeded(runner);
 
         bool isActorHostPlayer = player == runner.LocalPlayer;
 
         if (isActorHostPlayer)
         {
             SpawnActorAvatarForHost(runner, player);
-            Debug.Log("Actor Host joined. ActorAvatar spawned.");
+            Debug.Log("BasicSpawner: Actor Host joined. ActorAvatar spawn attempted.");
         }
         else
         {
-            Debug.Log("Audience Client joined. No audience avatar spawned.");
+            Debug.Log("BasicSpawner: Audience Client joined. No audience avatar spawned.");
         }
+    }
+
+    private void SpawnWebRtcSignalHubIfNeeded(NetworkRunner runner)
+    {
+        if (_webRtcSignalHubObject != null)
+            return;
+
+        if (_webRtcSignalHubPrefab == default)
+        {
+            Debug.LogWarning("BasicSpawner: WebRtcSignalHub prefab is not assigned.");
+            return;
+        }
+
+        _webRtcSignalHubObject = runner.Spawn(
+            _webRtcSignalHubPrefab,
+            Vector3.zero,
+            Quaternion.identity
+        );
+
+        Debug.Log("BasicSpawner: WebRtcSignalHub spawned by Actor Host.");
+    }
+
+    private void SpawnNetworkWebcamControlHubIfNeeded(NetworkRunner runner)
+    {
+        if (_networkWebcamControlHubObject != null)
+            return;
+
+        if (_networkWebcamControlHubPrefab == default)
+        {
+            Debug.LogWarning("BasicSpawner: NetworkWebcamControlHub prefab is not assigned.");
+            return;
+        }
+
+        _networkWebcamControlHubObject = runner.Spawn(
+            _networkWebcamControlHubPrefab,
+            Vector3.zero,
+            Quaternion.identity
+        );
+
+        Debug.Log("BasicSpawner: NetworkWebcamControlHub spawned by Actor Host.");
     }
 
     private void SpawnActorAvatarForHost(NetworkRunner runner, PlayerRef player)
@@ -206,13 +375,13 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
         if (_actorAvatarPrefab == default)
         {
-            Debug.LogWarning("ActorAvatar prefab is not assigned. ActorAvatar will not be spawned.");
+            Debug.LogWarning("BasicSpawner: ActorAvatar prefab is not assigned. ActorAvatar will not be spawned.");
             return;
         }
 
         if (_actorSpawnPoint == null)
         {
-            Debug.LogWarning("Actor spawn point is not assigned. ActorAvatar will spawn at Vector3.zero.");
+            Debug.LogWarning("BasicSpawner: Actor spawn point is not assigned. ActorAvatar will spawn at Vector3.zero.");
         }
 
         Vector3 spawnPosition = _actorSpawnPoint != null
@@ -243,7 +412,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         if (sync == null)
         {
             Debug.LogWarning(
-                "ActorAvatarNetworkSync not found on ActorAvatar. " +
+                "BasicSpawner: ActorAvatarNetworkSync not found on ActorAvatar. " +
                 "This is okay if you have not added actor tracking sync yet."
             );
             return;
@@ -255,27 +424,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             _actorRightHandSource
         );
 
-        Debug.Log("Actor local tracking sources bound to ActorAvatar.");
-    }
-
-    private void SpawnWebRtcSignalHubIfNeeded(NetworkRunner runner)
-    {
-        if (_webRtcSignalHubObject != null)
-            return;
-
-        if (_webRtcSignalHubPrefab == default)
-        {
-            Debug.LogWarning("WebRtcSignalHub prefab is not assigned.");
-            return;
-        }
-
-        _webRtcSignalHubObject = runner.Spawn(
-            _webRtcSignalHubPrefab,
-            Vector3.zero,
-            Quaternion.identity
-        );
-
-        Debug.Log("WebRtcSignalHub spawned by Actor Host.");
+        Debug.Log("BasicSpawner: Actor local tracking sources bound to ActorAvatar.");
     }
 
     void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player)
@@ -284,6 +433,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         {
             runner.Despawn(networkObject);
             _spawnedObjects.Remove(player);
+            Debug.Log($"BasicSpawner: Despawned object for player: {player}");
         }
     }
 
@@ -292,13 +442,31 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         NetworkInputData data = new NetworkInputData();
         input.Set(data);
     }
-    void INetworkRunnerCallbacks.OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
 
-    void INetworkRunnerCallbacks.OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
+    void INetworkRunnerCallbacks.OnInputMissing(
+        NetworkRunner runner,
+        PlayerRef player,
+        NetworkInput input)
+    { }
 
-    void INetworkRunnerCallbacks.OnConnectedToServer(NetworkRunner runner) { }
+    void INetworkRunnerCallbacks.OnShutdown(
+        NetworkRunner runner,
+        ShutdownReason shutdownReason)
+    {
+        Debug.Log($"BasicSpawner: Runner shutdown. Reason: {shutdownReason}");
+    }
 
-    void INetworkRunnerCallbacks.OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
+    void INetworkRunnerCallbacks.OnConnectedToServer(NetworkRunner runner)
+    {
+        Debug.Log("BasicSpawner: Connected to server.");
+    }
+
+    void INetworkRunnerCallbacks.OnDisconnectedFromServer(
+        NetworkRunner runner,
+        NetDisconnectReason reason)
+    {
+        Debug.LogWarning($"BasicSpawner: Disconnected from server. Reason: {reason}");
+    }
 
     void INetworkRunnerCallbacks.OnConnectRequest(
         NetworkRunner runner,
@@ -310,7 +478,9 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         NetworkRunner runner,
         NetAddress remoteAddress,
         NetConnectFailedReason reason)
-    { }
+    {
+        Debug.LogError($"BasicSpawner: Connect failed. Address: {remoteAddress}, Reason: {reason}");
+    }
 
     void INetworkRunnerCallbacks.OnUserSimulationMessage(
         NetworkRunner runner,
@@ -332,9 +502,15 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         HostMigrationToken hostMigrationToken)
     { }
 
-    void INetworkRunnerCallbacks.OnSceneLoadDone(NetworkRunner runner) { }
+    void INetworkRunnerCallbacks.OnSceneLoadDone(NetworkRunner runner)
+    {
+        Debug.Log("BasicSpawner: Network scene load done.");
+    }
 
-    void INetworkRunnerCallbacks.OnSceneLoadStart(NetworkRunner runner) { }
+    void INetworkRunnerCallbacks.OnSceneLoadStart(NetworkRunner runner)
+    {
+        Debug.Log("BasicSpawner: Network scene load start.");
+    }
 
     void INetworkRunnerCallbacks.OnObjectExitAOI(
         NetworkRunner runner,

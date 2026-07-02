@@ -14,10 +14,21 @@ public class VideoDisplayScreen : MonoBehaviour
             targetRenderer = GetComponent<Renderer>();
         }
 
-        if (targetRenderer != null)
+        if (targetRenderer == null)
         {
-            runtimeMaterial = targetRenderer.material;
+            Debug.LogWarning("VideoDisplayScreen: Target Renderer is missing on " + gameObject.name);
+            return;
         }
+
+        runtimeMaterial = targetRenderer.material;
+
+        if (runtimeMaterial == null)
+        {
+            Debug.LogWarning("VideoDisplayScreen: Runtime material is missing on " + gameObject.name);
+            return;
+        }
+
+        Debug.Log("VideoDisplayScreen: Ready. Renderer = " + targetRenderer.name);
     }
 
     public void SetTexture(Texture texture)
@@ -28,7 +39,19 @@ public class VideoDisplayScreen : MonoBehaviour
             return;
         }
 
+        if (texture == null)
+        {
+            Debug.LogWarning("VideoDisplayScreen: SetTexture received null texture.");
+            return;
+        }
+
         runtimeMaterial.mainTexture = texture;
+
+        Debug.Log(
+            "VideoDisplayScreen: Texture applied. " +
+            "Texture = " + texture.name +
+            ", Size = " + texture.width + "x" + texture.height
+        );
     }
 
     public void ClearTexture()
@@ -36,6 +59,7 @@ public class VideoDisplayScreen : MonoBehaviour
         if (runtimeMaterial != null)
         {
             runtimeMaterial.mainTexture = null;
+            Debug.Log("VideoDisplayScreen: Texture cleared.");
         }
     }
 }

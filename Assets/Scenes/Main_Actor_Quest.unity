@@ -3337,22 +3337,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _autoStart: 1
   _autoStartAsActorHost: 1
+  _retryClientJoin: 1
+  _clientRetryDelay: 3
+  _maxClientRetryCount: 0
   _actorAvatarPrefab:
     RawGuidValue: 00000000000000000000000000000000
   _webRtcSignalHubPrefab:
     RawGuidValue: b7f094163cd314d438c59307ae25d098
+  _networkWebcamControlHubPrefab:
+    RawGuidValue: cc950a10baf3903488f1ff2329e3d150
   _actorSpawnPoint: {fileID: 0}
-  _actorLocalRig: {fileID: 0}
+  _actorLocalRig: {fileID: 1658652335}
   _audienceFishTankRig: {fileID: 0}
   _performerMenu: {fileID: 116830826}
   _webcamManager: {fileID: 0}
   _audienceWebRtcSender: {fileID: 0}
+  _audienceWebcamRuntime: {fileID: 0}
   _actorWebRtcReceiver: {fileID: 814317451}
   _webcamScreen: {fileID: 398050751}
   _actorHeadSource: {fileID: 0}
   _actorLeftHandSource: {fileID: 0}
   _actorRightHandSource: {fileID: 0}
   _sessionName: TestRoom
+  _sceneBuildIndex: 0
 --- !u!4 &110198571
 Transform:
   m_ObjectHideFlags: 0
@@ -7162,70 +7169,6 @@ Mesh:
     offset: 0
     size: 0
     path: 
---- !u!1 &328145806
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 328145809}
-  - component: {fileID: 328145808}
-  - component: {fileID: 328145807}
-  m_Layer: 0
-  m_Name: NetworkWebcamControlHub
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &328145807
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 328145806}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  SortKey: 3867435262
-  ObjectInterest: 1
-  Flags: 262145
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 328145808}
-  ForceRemoteRenderTimeframe: 0
---- !u!114 &328145808
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 328145806}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 38a7b775ace645f489b897ec56183c96, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &328145809
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 328145806}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.56165254, y: 0.5520265, z: -0.117480844}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &332652062
 GameObject:
   m_ObjectHideFlags: 0
@@ -8694,8 +8637,7 @@ PrefabInstance:
       propertyPath: width
       value: 0.6
       objectReference: {fileID: 0}
-    m_RemovedComponents:
-    - {fileID: 7156966951654086340, guid: af6ab58e5eef520428407f51f075c619, type: 3}
+    m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
@@ -15475,7 +15417,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 22218d1aaf3e26d40879ce307fd21275, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  videoDisplayScreen: {fileID: 0}
+  videoDisplayScreen: {fileID: 398050752}
+  useGoogleStun: 1
+  useTurn: 1
+  turnUrlUdp: turn:global.relay.metered.ca:80
+  turnUrlTcp: turn:global.relay.metered.ca:80?transport=tcp
+  turnUsername: b7fea3a8499e5a5c3fe1d563
+  turnCredential: TZOX+7a9nbjiue/j
 --- !u!4 &814317453
 Transform:
   m_ObjectHideFlags: 0
@@ -27603,6 +27551,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: eaf7b4c53f0c63542ab03ccbee9e5b2e, type: 3}
+--- !u!1 &1658652335 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 6426652291402195324, guid: eaf7b4c53f0c63542ab03ccbee9e5b2e, type: 3}
+  m_PrefabInstance: {fileID: 1658652334}
+  m_PrefabAsset: {fileID: 0}
 --- !u!43 &1737809564
 Mesh:
   m_ObjectHideFlags: 0
@@ -35683,7 +35636,6 @@ SceneRoots:
   - {fileID: 1979956002}
   - {fileID: 227403838}
   - {fileID: 110198571}
-  - {fileID: 328145809}
   - {fileID: 814317453}
   - {fileID: 398050750}
   - {fileID: 116830832}
