@@ -44,6 +44,14 @@
     {
       "name": "/actions/NewSet/in/NewAction1",
       "type": "pose"
+    },
+    {
+      "name": "/actions/NewSet/in/rightconcl",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/NewSet/in/righthandplace",
+      "type": "pose"
     }
   ],
   "action_sets": [
@@ -65,7 +73,7 @@
     },
     {
       "name": "/actions/NewSet",
-      "usage": "single"
+      "usage": "leftright"
     }
   ],
   "default_bindings": [

@@ -24,5 +24,21 @@ namespace Valve.VR
                 return SteamVR_Actions.newSet_NewAction1;
             }
         }
+        
+        public virtual SteamVR_Action_Boolean rightconcl
+        {
+            get
+            {
+                return SteamVR_Actions.newSet_rightconcl;
+            }
+        }
+        
+        public virtual SteamVR_Action_Pose righthandplace
+        {
+            get
+            {
+                return SteamVR_Actions.newSet_righthandplace;
+            }
+        }
     }
 }

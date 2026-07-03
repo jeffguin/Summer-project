@@ -1,4 +1,5 @@
 {
+  "app_key": "application.generated.unity.summer.exe",
   "bindings": {
     "/actions/buggy": {
       "chords": [],
@@ -93,6 +94,29 @@
       "poses": [],
       "haptics": [],
       "sources": [],
+      "skeleton": []
+    },
+    "/actions/newset": {
+      "chords": [],
+      "poses": [
+        {
+          "output": "/actions/newset/in/righthandplace",
+          "path": "/user/hand/right/pose/raw"
+        }
+      ],
+      "haptics": [],
+      "sources": [
+        {
+          "path": "/user/hand/right/input/trigger",
+          "mode": "trigger",
+          "parameters": {},
+          "inputs": {
+            "click": {
+              "output": "/actions/newset/in/rightconcl"
+            }
+          }
+        }
+      ],
       "skeleton": []
     },
     "/actions/platformer": {
