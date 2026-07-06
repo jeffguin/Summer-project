@@ -39547,7 +39547,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
 --- !u!4 &3987971905084296113 stripped
 Transform:
-  m_CorrespondingSourceObject: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+  m_CorrespondingSourceObject: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
   m_PrefabInstance: {fileID: 7595156024841250784}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &4174777142923866295
@@ -40855,50 +40855,58 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1917250735}
     m_Modifications:
-    - target: {fileID: 1927513248513706656, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 1927513248513706656, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_Name
       value: suisei V1.0
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0.38597512
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalPosition.y
       value: -1.3973352
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalPosition.z
       value: 0.6495122
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalRotation.w
       value: 0.83416504
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalRotation.x
       value: -0
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalRotation.y
       value: 0.551515
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalRotation.z
       value: -0
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
       value: 66.942
       objectReference: {fileID: 0}
-    - target: {fileID: 2261043527398197424, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+    - target: {fileID: 2261043527398197424, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2535239746267928641, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
+      propertyPath: _aiMotionSynthesizerConfig.ReferenceTransform
+      value: 
+      objectReference: {fileID: 2032232198}
+    - target: {fileID: 3755631715083856886, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
+      propertyPath: _config
+      value: 
+      objectReference: {fileID: 4900000, guid: 85bb9c4ab73a9e041bc51882f63a9c99, type: 3}
     - target: {fileID: 2535239746267928641, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
       propertyPath: _aiMotionSynthesizerConfig.ReferenceTransform
       value: 
@@ -40951,7 +40959,7 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 32fd76afe6cf23b4fbceeb09bbbd4851, type: 3}
+  m_SourcePrefab: {fileID: 100100000, guid: e43e1a0bc445041428914b753f869b6c, type: 3}
 --- !u!4 &7613522897845464114 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1101801159667864708, guid: d156d8e6c6a7e9b43b589a1efd838ddb, type: 3}

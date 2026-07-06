@@ -3815,10 +3815,6 @@ MonoBehaviour:
   hoverRayMaterial: {fileID: 2100000, guid: 73e599628364d8741ad95ae82c6a7fd1, type: 2}
   grabRayMaterial: {fileID: 2100000, guid: 86d6eea8a4ef382458fa49f696525ef5, type: 2}
   rayWidth: 0.01
-  keepInitialRotation: 1
-  rotateWithController: 0
-  defaultGrabDistance: 1.5
-  drawDebugRay: 1
 --- !u!4 &190327127
 Transform:
   m_ObjectHideFlags: 0
@@ -15317,7 +15313,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &616933217
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -15367,6 +15363,9 @@ MonoBehaviour:
   _actorRightHandSource: {fileID: 0}
   _sessionName: TestRoom
   _sceneBuildIndex: 0
+  _debugInteractableSpawning: 1
+  _verboseInteractableSpawning: 1
+  _networkInteractableSpawnItems: []
 --- !u!4 &616933219
 Transform:
   m_ObjectHideFlags: 0
@@ -43934,7 +43933,7 @@ PrefabInstance:
       objectReference: {fileID: 1053044740}
     - target: {fileID: 3859846150802987004, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 1084
+      value: 1090
       objectReference: {fileID: 0}
     - target: {fileID: 4080988023871556050, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
@@ -43944,13 +43943,17 @@ PrefabInstance:
       propertyPath: m_Name
       value: Cup
       objectReference: {fileID: 0}
+    - target: {fileID: 4742363694045088060, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4813771740812048662, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 1892223286}
     - target: {fileID: 4813771740812048662, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 2328
+      value: 2334
       objectReference: {fileID: 0}
     - target: {fileID: 4976438376395507026, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh

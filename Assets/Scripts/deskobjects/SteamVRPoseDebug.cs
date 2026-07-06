@@ -1,3 +1,5 @@
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+
 using UnityEngine;
 using Valve.VR;
 
@@ -31,3 +33,17 @@ public class SteamVRPoseDebug : MonoBehaviour
         );
     }
 }
+
+#else
+
+using UnityEngine;
+
+public class SteamVRPoseDebug : MonoBehaviour
+{
+    private void Awake()
+    {
+        enabled = false;
+    }
+}
+
+#endif

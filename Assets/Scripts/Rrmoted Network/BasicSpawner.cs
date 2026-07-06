@@ -81,11 +81,52 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [Tooltip("如果两个 Build Profile 都只放一个场景，建议保持为 0。")]
     [SerializeField] private int _sceneBuildIndex = 0;
 
+    [Header("Debug")]
+    [Tooltip("开启后输出初始网络物体、可交互物体列表、SpawnPoint、PrefabRef、Runner 状态等调试日志。")]
+    [SerializeField] private bool _debugInteractableSpawning = true;
+
+    [Tooltip("开启后每次尝试生成可交互物体时输出更详细的列表元素检查信息。")]
+    [SerializeField] private bool _verboseInteractableSpawning = true;
+
+    [Serializable]
+    private class NetworkInteractableSpawnItem
+    {
+        [Tooltip("仅用于 Inspector 和日志显示，例如 Cup / Ball / Knife / Plate。")]
+        public string name = "Interactable";
+
+        [Tooltip("需要由 Actor Host 生成的 Fusion Network Prefab。Prefab 根节点必须包含 NetworkObject，并且必须注册到 Fusion Network Project Config 的 Prefab Table。")]
+        public NetworkPrefabRef prefab;
+
+        [Tooltip("该物体在场景中的生成位置。建议在 Actor 场景中创建对应的 SpawnPoint 空物体。")]
+        public Transform spawnPoint;
+
+        [Tooltip("如果没有设置 SpawnPoint，则使用这个备用生成位置。")]
+        public Vector3 fallbackPosition = new Vector3(0f, 1.2f, 2f);
+
+        [Tooltip("如果没有设置 SpawnPoint，则使用这个备用生成旋转。")]
+        public Vector3 fallbackEulerAngles = Vector3.zero;
+
+        [Tooltip("是否在 Actor Host 创建房间 / 场景加载完成后自动生成。")]
+        public bool spawnOnActorHostStart = true;
+
+        [Tooltip("是否把本物体的 Input Authority 分配给 Actor Host。本项目中的可交互物体通常保持 false，由 State Authority/Host 控制。")]
+        public bool assignInputAuthorityToActor = false;
+    }
+
+    [Header("Network Interactable Objects")]
+    [Tooltip("由 Actor Host 自动生成并同步到 Audience Client 的可交互网络物体列表。杯子、球、盘子等都可以加入这里。")]
+    [SerializeField]
+    private List<NetworkInteractableSpawnItem> _networkInteractableSpawnItems =
+        new List<NetworkInteractableSpawnItem>();
+
     private NetworkRunner _runner;
 
     private NetworkObject _webRtcSignalHubObject;
     private NetworkObject _networkWebcamControlHubObject;
     private NetworkObject _actorAvatarObject;
+
+    private readonly Dictionary<int, NetworkObject> _spawnedInteractableObjects =
+        new Dictionary<int, NetworkObject>();
 
     private LocalRole _localRole = LocalRole.None;
 
@@ -95,8 +136,31 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     private readonly Dictionary<PlayerRef, NetworkObject> _spawnedObjects =
         new Dictionary<PlayerRef, NetworkObject>();
 
+    private void DebugSpawn(string message)
+    {
+        if (!_debugInteractableSpawning)
+            return;
+
+        Debug.Log("[BasicSpawner Spawn Debug] " + message);
+    }
+
+    private void DebugSpawnWarning(string message)
+    {
+        Debug.LogWarning("[BasicSpawner Spawn Debug] " + message);
+    }
+
+    private void DebugSpawnError(string message)
+    {
+        Debug.LogError("[BasicSpawner Spawn Debug] " + message);
+    }
+
     private void Start()
     {
+        DebugSpawn(
+            $"Start called. AutoStart={_autoStart}, AutoStartAsActorHost={_autoStartAsActorHost}, " +
+            $"Session={_sessionName}, SceneBuildIndex={_sceneBuildIndex}"
+        );
+
         if (!_autoStart)
             return;
 
@@ -160,6 +224,20 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         {
             _clientRetryCount = 0;
             Debug.Log("BasicSpawner: Fusion StartGame succeeded.");
+
+            DebugSpawn(
+                $"StartGame result OK. RunnerExists={_runner != null}, " +
+                $"IsServer={(_runner != null && _runner.IsServer)}, " +
+                $"LocalPlayer={(_runner != null ? _runner.LocalPlayer.ToString() : "None")}"
+            );
+
+            //if (_runner != null && _runner.IsServer)
+            //{
+            //    DebugSpawn("Calling TrySpawnInitialNetworkObjects immediately after StartGame succeeded.");
+            //    TrySpawnInitialNetworkObjects(_runner);
+            //}
+
+            DebugSpawn("StartGame succeeded. Waiting for OnSceneLoadDone before spawning initial network objects.");
         }
         else
         {
@@ -235,6 +313,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         _webRtcSignalHubObject = null;
         _networkWebcamControlHubObject = null;
         _actorAvatarObject = null;
+        _spawnedInteractableObjects.Clear();
         _spawnedObjects.Clear();
     }
 
@@ -312,8 +391,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         if (!runner.IsServer)
             return;
 
-        SpawnWebRtcSignalHubIfNeeded(runner);
-        SpawnNetworkWebcamControlHubIfNeeded(runner);
+        TrySpawnInitialNetworkObjects(runner);
 
         bool isActorHostPlayer = player == runner.LocalPlayer;
 
@@ -326,6 +404,33 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         {
             Debug.Log("BasicSpawner: Audience Client joined. No audience avatar spawned.");
         }
+    }
+
+    private void TrySpawnInitialNetworkObjects(NetworkRunner runner)
+    {
+        if (runner == null)
+        {
+            DebugSpawnWarning("Cannot spawn initial network objects because runner is null.");
+            return;
+        }
+
+        DebugSpawn(
+            $"TrySpawnInitialNetworkObjects called. " +
+            $"IsServer={runner.IsServer}, LocalPlayer={runner.LocalPlayer}, " +
+            $"InteractableCount={(_networkInteractableSpawnItems != null ? _networkInteractableSpawnItems.Count : -1)}"
+        );
+
+        if (!runner.IsServer)
+        {
+            DebugSpawn("Skip TrySpawnInitialNetworkObjects because this runner is not server.");
+            return;
+        }
+
+        SpawnWebRtcSignalHubIfNeeded(runner);
+        SpawnNetworkWebcamControlHubIfNeeded(runner);
+        SpawnNetworkInteractableObjectsIfNeeded(runner);
+
+        Debug.Log("BasicSpawner: Initial network objects checked/spawned by Actor Host.");
     }
 
     private void SpawnWebRtcSignalHubIfNeeded(NetworkRunner runner)
@@ -505,6 +610,19 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     void INetworkRunnerCallbacks.OnSceneLoadDone(NetworkRunner runner)
     {
         Debug.Log("BasicSpawner: Network scene load done.");
+
+        DebugSpawn(
+        $"OnSceneLoadDone called. " +
+        $"RunnerExists={runner != null}, " +
+        $"IsServer={(runner != null && runner.IsServer)}, " +
+        $"LocalPlayer={(runner != null ? runner.LocalPlayer.ToString() : "None")}"
+    );
+
+        if (runner != null && runner.IsServer)
+        {
+            DebugSpawn("Calling TrySpawnInitialNetworkObjects from OnSceneLoadDone.");
+            TrySpawnInitialNetworkObjects(runner);
+        }
     }
 
     void INetworkRunnerCallbacks.OnSceneLoadStart(NetworkRunner runner)
@@ -537,4 +655,158 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         ReliableKey key,
         float progress)
     { }
+
+
+    private void SpawnNetworkInteractableObjectsIfNeeded(NetworkRunner runner)
+    {
+        if (runner == null)
+        {
+            DebugSpawnWarning("Cannot spawn interactable objects because runner is null.");
+            return;
+        }
+
+        DebugSpawn(
+            $"SpawnNetworkInteractableObjectsIfNeeded called. " +
+            $"IsServer={runner.IsServer}, " +
+            $"ListNull={_networkInteractableSpawnItems == null}, " +
+            $"ListCount={(_networkInteractableSpawnItems != null ? _networkInteractableSpawnItems.Count : -1)}, " +
+            $"AlreadySpawnedCount={_spawnedInteractableObjects.Count}"
+        );
+
+        if (!runner.IsServer)
+        {
+            DebugSpawn("Skip interactable spawning because this runner is not server.");
+            return;
+        }
+
+        if (_networkInteractableSpawnItems == null || _networkInteractableSpawnItems.Count == 0)
+        {
+            Debug.Log("BasicSpawner: No network interactable spawn items configured.");
+            return;
+        }
+
+        for (int i = 0; i < _networkInteractableSpawnItems.Count; i++)
+        {
+            SpawnNetworkInteractableIfNeeded(runner, i, _networkInteractableSpawnItems[i]);
+        }
+    }
+
+    private void SpawnNetworkInteractableIfNeeded(
+        NetworkRunner runner,
+        int itemIndex,
+        NetworkInteractableSpawnItem item)
+    {
+        if (item == null)
+        {
+            DebugSpawnWarning($"Interactable item at index {itemIndex} is null.");
+            return;
+        }
+
+        string itemName = GetInteractableName(item, itemIndex);
+
+        if (_verboseInteractableSpawning)
+        {
+            DebugSpawn(
+                $"Checking interactable item. " +
+                $"Index={itemIndex}, Name={itemName}, " +
+                $"SpawnOnActorHostStart={item.spawnOnActorHostStart}, " +
+                $"AssignInputAuthorityToActor={item.assignInputAuthorityToActor}, " +
+                $"PrefabIsDefault={item.prefab == default}, " +
+                $"SpawnPoint={(item.spawnPoint != null ? item.spawnPoint.name : "None")}, " +
+                $"FallbackPosition={item.fallbackPosition}, " +
+                $"FallbackEuler={item.fallbackEulerAngles}, " +
+                $"AlreadySpawned={_spawnedInteractableObjects.ContainsKey(itemIndex)}"
+            );
+        }
+
+        if (!item.spawnOnActorHostStart)
+        {
+            DebugSpawn($"Skip interactable '{itemName}' because spawnOnActorHostStart is false.");
+            return;
+        }
+
+        if (_spawnedInteractableObjects.TryGetValue(itemIndex, out NetworkObject existingObject))
+        {
+            DebugSpawn(
+                $"Skip interactable '{itemName}' because it is already spawned. " +
+                $"ExistingObject={(existingObject != null ? existingObject.name : "NullReference")}"
+            );
+            return;
+        }
+
+        if (item.prefab == default)
+        {
+            DebugSpawnWarning(
+                $"Interactable item '{itemName}' has no NetworkPrefabRef assigned. " +
+                $"Check BasicSpawner Inspector list element {itemIndex}."
+            );
+            return;
+        }
+
+        Vector3 spawnPosition = item.spawnPoint != null
+            ? item.spawnPoint.position
+            : item.fallbackPosition;
+
+        Quaternion spawnRotation = item.spawnPoint != null
+            ? item.spawnPoint.rotation
+            : Quaternion.Euler(item.fallbackEulerAngles);
+
+        PlayerRef? inputAuthority = item.assignInputAuthorityToActor
+            ? runner.LocalPlayer
+            : null;
+
+        DebugSpawn(
+            $"Trying to spawn interactable '{itemName}'. " +
+            $"Index={itemIndex}, Position={spawnPosition}, Rotation={spawnRotation.eulerAngles}, " +
+            $"InputAuthority={(inputAuthority.HasValue ? inputAuthority.Value.ToString() : "None")}"
+        );
+
+        NetworkObject spawnedObject = null;
+
+        try
+        {
+            spawnedObject = inputAuthority.HasValue
+                ? runner.Spawn(item.prefab, spawnPosition, spawnRotation, inputAuthority.Value)
+                : runner.Spawn(item.prefab, spawnPosition, spawnRotation, inputAuthority: null);
+        }
+        catch (Exception exception)
+        {
+            DebugSpawnError(
+                $"Exception while spawning interactable '{itemName}'. " +
+                $"This usually means the prefab is not a valid Fusion Network Prefab, " +
+                $"is not registered in Network Project Config / Prefab Table, " +
+                $"or the prefab root does not contain a NetworkObject. " +
+                $"Exception={exception}"
+            );
+            return;
+        }
+
+        if (spawnedObject == null)
+        {
+            DebugSpawnError(
+                $"Runner.Spawn returned null for interactable '{itemName}'. " +
+                $"Check Prefab Table registration and NetworkObject on prefab root."
+            );
+            return;
+        }
+
+        _spawnedInteractableObjects[itemIndex] = spawnedObject;
+
+        Debug.Log(
+            $"BasicSpawner: Network interactable spawned. " +
+            $"Index: {itemIndex}, Name: {itemName}, Object: {spawnedObject.name}, " +
+            $"Position: {spawnedObject.transform.position}, Rotation: {spawnedObject.transform.rotation.eulerAngles}"
+        );
+    }
+
+    private string GetInteractableName(NetworkInteractableSpawnItem item, int itemIndex)
+    {
+        if (item == null || string.IsNullOrWhiteSpace(item.name))
+        {
+            return $"Interactable_{itemIndex}";
+        }
+
+        return item.name;
+    }
+
 }

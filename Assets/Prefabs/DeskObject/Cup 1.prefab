@@ -4144,6 +4144,8 @@ GameObject:
   - component: {fileID: 1055342224181209150}
   - component: {fileID: 6455389233163092445}
   - component: {fileID: 8826508382343774389}
+  - component: {fileID: 5655919272754944016}
+  - component: {fileID: 2873689877708158204}
   m_Layer: 14
   m_Name: Cup 1
   m_TagString: cup
@@ -4192,9 +4194,9 @@ Rigidbody:
     m_Bits: 0
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 0
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 2
 --- !u!114 &1735554724070214971
@@ -4256,7 +4258,9 @@ MonoBehaviour:
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
-  NetworkedBehaviours: []
+  NetworkedBehaviours:
+  - {fileID: 5655919272754944016}
+  - {fileID: 2873689877708158204}
   ForceRemoteRenderTimeframe: 0
 --- !u!114 &6455389233163092445
 MonoBehaviour:
@@ -4293,6 +4297,46 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.3, y: 0.3, z: 0.3}
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &5655919272754944016
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4742363694045088060}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0
+--- !u!114 &2873689877708158204
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4742363694045088060}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 20727f1ac5d55cb4794f3edcf6bc3525, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rb: {fileID: 0}
+  followSpeed: 25
+  rotateSpeed: 25
+  enableGravityOnRelease: 1
+  releaseCooldown: 0.2
+  debugLog: 1
+  _IsGrabbed:
+    _value: 0
+  _GrabbedByRoleValue: 0
+  _TargetPosition: {x: 0, y: 0, z: 0}
+  _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!1 &6316871532150650910
 GameObject:
   m_ObjectHideFlags: 0
