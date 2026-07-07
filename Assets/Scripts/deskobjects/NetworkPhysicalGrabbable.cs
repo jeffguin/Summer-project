@@ -1,4 +1,4 @@
-using Fusion;
+﻿using Fusion;
 using UnityEngine;
 
 [RequireComponent(typeof(NetworkObject))]
@@ -22,10 +22,13 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
 
     [Header("Release Settings")]
     [SerializeField] private bool enableGravityOnRelease = true;
-    [SerializeField] private float releaseCooldown = 0.2f;
+
+    [Tooltip("释放后短暂冷却，防止同一帧或相邻帧重复 grab。调试阶段可设为 0 或 0.05。")]
+    [SerializeField] private float releaseCooldown = 0.05f;
 
     [Header("Debug")]
     [SerializeField] private bool debugLog = true;
+    [SerializeField] private bool debugMoveLog = false;
 
     [Networked] public NetworkBool IsGrabbed { get; private set; }
     [Networked] public PlayerRef GrabbedByPlayer { get; private set; }
@@ -41,18 +44,24 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     private Vector3 estimatedVelocity;
     private Vector3 estimatedAngularVelocity;
 
+    private int moveDebugCounter = 0;
+
     public GrabRole CurrentGrabRole => (GrabRole)GrabbedByRoleValue;
 
     private void Awake()
     {
         if (rb == null)
+        {
             rb = GetComponent<Rigidbody>();
+        }
     }
 
     public override void Spawned()
     {
         if (rb == null)
+        {
             rb = GetComponent<Rigidbody>();
+        }
 
         TargetPosition = transform.position;
         TargetRotation = transform.rotation;
@@ -60,16 +69,29 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         lastPosition = transform.position;
         lastRotation = transform.rotation;
 
+        estimatedVelocity = Vector3.zero;
+        estimatedAngularVelocity = Vector3.zero;
+
         if (Object.HasStateAuthority)
         {
             IsGrabbed = false;
             GrabbedByPlayer = default;
             GrabbedByRoleValue = (int)GrabRole.None;
+            ReleaseCooldownTimer = TickTimer.None;
+
+            if (rb != null)
+            {
+                rb.isKinematic = true;
+                rb.useGravity = false;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
         }
 
         DebugMessage(
             $"Spawned. HasStateAuthority={Object.HasStateAuthority}, " +
-            $"HasInputAuthority={Object.HasInputAuthority}, Position={transform.position}"
+            $"HasInputAuthority={Object.HasInputAuthority}, " +
+            $"Position={transform.position}"
         );
     }
 
@@ -78,10 +100,21 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
+        ClearExpiredCooldownIfNeeded();
+
         if (IsGrabbed)
         {
             MoveTowardsTarget();
             EstimateVelocity();
+        }
+    }
+
+    private void ClearExpiredCooldownIfNeeded()
+    {
+        if (ReleaseCooldownTimer.IsRunning && ReleaseCooldownTimer.Expired(Runner))
+        {
+            ReleaseCooldownTimer = TickTimer.None;
+            DebugMessage("Release cooldown expired and cleared.");
         }
     }
 
@@ -121,6 +154,20 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
                 Runner.DeltaTime * rotateSpeed
             );
         }
+
+        if (debugMoveLog)
+        {
+            moveDebugCounter++;
+
+            if (moveDebugCounter % 30 == 0)
+            {
+                DebugMessage(
+                    $"Moving. CurrentPosition={transform.position}, " +
+                    $"TargetPosition={TargetPosition}, IsGrabbed={IsGrabbed}, " +
+                    $"Owner={GrabbedByPlayer}, Role={CurrentGrabRole}"
+                );
+            }
+        }
     }
 
     private void EstimateVelocity()
@@ -136,11 +183,17 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         deltaRotation.ToAngleAxis(out float angle, out Vector3 axis);
 
         if (angle > 180f)
+        {
             angle -= 360f;
+        }
 
         if (axis.sqrMagnitude > 0.0001f)
         {
             estimatedAngularVelocity = axis.normalized * angle * Mathf.Deg2Rad / dt;
+        }
+        else
+        {
+            estimatedAngularVelocity = Vector3.zero;
         }
 
         lastPosition = transform.position;
@@ -153,13 +206,16 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         GrabRole requesterRole = (GrabRole)requesterRoleValue;
 
         DebugMessage(
-            $"RPC_RequestGrab received. Requester={requester}, Role={requesterRole}, " +
-            $"IsGrabbed={IsGrabbed}, CurrentOwner={GrabbedByPlayer}, CurrentRole={CurrentGrabRole}"
+            $"RPC_RequestGrab received. " +
+            $"Requester={requester}, Role={requesterRole}, " +
+            $"IsGrabbed={IsGrabbed}, CurrentOwner={GrabbedByPlayer}, CurrentRole={CurrentGrabRole}, " +
+            $"CooldownRunning={ReleaseCooldownTimer.IsRunning}, " +
+            $"CooldownExpiredOrNotRunning={ReleaseCooldownTimer.ExpiredOrNotRunning(Runner)}"
         );
 
-        if (ReleaseCooldownTimer.IsRunning)
+        if (!ReleaseCooldownTimer.ExpiredOrNotRunning(Runner))
         {
-            DebugMessage("Grab rejected because release cooldown is active.");
+            DebugMessage("Grab rejected because release cooldown is still active.");
             return;
         }
 
@@ -180,6 +236,7 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
 
         lastPosition = transform.position;
         lastRotation = transform.rotation;
+
         estimatedVelocity = Vector3.zero;
         estimatedAngularVelocity = Vector3.zero;
 
@@ -191,7 +248,9 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             rb.angularVelocity = Vector3.zero;
         }
 
-        DebugMessage($"Grab accepted. Owner={GrabbedByPlayer}, Role={CurrentGrabRole}");
+        DebugMessage(
+            $"Grab accepted. Owner={GrabbedByPlayer}, Role={CurrentGrabRole}"
+        );
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -202,7 +261,13 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         Quaternion targetRotation)
     {
         if (!IsGrabbed)
+        {
+            DebugMessage(
+                $"Target update rejected because object is not grabbed. " +
+                $"Requester={requester}, Role={(GrabRole)requesterRoleValue}"
+            );
             return;
+        }
 
         if (GrabbedByPlayer != requester)
         {
@@ -215,25 +280,38 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         if (GrabbedByRoleValue != requesterRoleValue)
         {
             DebugMessage(
-                $"Target update rejected. Role mismatch. RequesterRole={(GrabRole)requesterRoleValue}, CurrentRole={CurrentGrabRole}"
+                $"Target update rejected. Role mismatch. " +
+                $"RequesterRole={(GrabRole)requesterRoleValue}, CurrentRole={CurrentGrabRole}"
             );
             return;
         }
 
         TargetPosition = targetPosition;
         TargetRotation = targetRotation;
+
+        if (debugMoveLog)
+        {
+            DebugMessage(
+                $"Target updated. Requester={requester}, Role={(GrabRole)requesterRoleValue}, " +
+                $"TargetPosition={TargetPosition}, TargetRotation={TargetRotation.eulerAngles}"
+            );
+        }
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
     public void RPC_RequestRelease(PlayerRef requester, int requesterRoleValue)
     {
         DebugMessage(
-            $"RPC_RequestRelease received. Requester={requester}, Role={(GrabRole)requesterRoleValue}, " +
+            $"RPC_RequestRelease received. " +
+            $"Requester={requester}, Role={(GrabRole)requesterRoleValue}, " +
             $"IsGrabbed={IsGrabbed}, Owner={GrabbedByPlayer}, CurrentRole={CurrentGrabRole}"
         );
 
         if (!IsGrabbed)
+        {
+            DebugMessage("Release ignored because object is not grabbed.");
             return;
+        }
 
         if (GrabbedByPlayer != requester)
         {
@@ -246,7 +324,8 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         if (GrabbedByRoleValue != requesterRoleValue)
         {
             DebugMessage(
-                $"Release rejected. Role mismatch. RequesterRole={(GrabRole)requesterRoleValue}, CurrentRole={CurrentGrabRole}"
+                $"Release rejected. Role mismatch. " +
+                $"RequesterRole={(GrabRole)requesterRoleValue}, CurrentRole={CurrentGrabRole}"
             );
             return;
         }
@@ -255,7 +334,14 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         GrabbedByPlayer = default;
         GrabbedByRoleValue = (int)GrabRole.None;
 
-        ReleaseCooldownTimer = TickTimer.CreateFromSeconds(Runner, releaseCooldown);
+        if (releaseCooldown > 0f)
+        {
+            ReleaseCooldownTimer = TickTimer.CreateFromSeconds(Runner, releaseCooldown);
+        }
+        else
+        {
+            ReleaseCooldownTimer = TickTimer.None;
+        }
 
         if (rb != null)
         {
@@ -265,7 +351,10 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             rb.angularVelocity = estimatedAngularVelocity;
         }
 
-        DebugMessage("Released successfully.");
+        DebugMessage(
+            $"Released successfully. Cooldown={releaseCooldown}, " +
+            $"Velocity={estimatedVelocity}, AngularVelocity={estimatedAngularVelocity}"
+        );
     }
 
     public bool IsControlledBy(PlayerRef player, GrabRole role)
@@ -273,6 +362,11 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         return IsGrabbed &&
                GrabbedByPlayer == player &&
                CurrentGrabRole == role;
+    }
+
+    public bool CanBeGrabbed()
+    {
+        return !IsGrabbed && ReleaseCooldownTimer.ExpiredOrNotRunning(Runner);
     }
 
     private void DebugMessage(string message)

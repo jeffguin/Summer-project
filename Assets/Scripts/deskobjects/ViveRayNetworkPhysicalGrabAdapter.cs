@@ -1,4 +1,4 @@
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+﻿#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 
 using Fusion;
 using UnityEngine;
@@ -7,7 +7,8 @@ using Valve.VR;
 public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 {
     [Header("Role")]
-    [SerializeField] private NetworkPhysicalGrabbable.GrabRole grabRole =
+    [SerializeField]
+    private NetworkPhysicalGrabbable.GrabRole grabRole =
         NetworkPhysicalGrabbable.GrabRole.Audience;
 
     [Header("Ray Source")]
@@ -31,9 +32,14 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
     [SerializeField] private float defaultGrabDistance = 1.5f;
     [SerializeField] private float targetSendRate = 30f;
 
+    [Header("Input Mode")]
+    [Tooltip("开启后：第一次 click 抓取，第二次 click 释放。适合 SteamVR Boolean Click 输入。")]
+    [SerializeField] private bool toggleGrabMode = true;
+
     [Header("Debug")]
     [SerializeField] private bool debugLog = true;
     [SerializeField] private bool drawDebugRay = false;
+    [SerializeField] private bool debugHoverLog = false;
 
     private NetworkRunner runner;
 
@@ -67,7 +73,8 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         }
 
         DebugMessage(
-            $"Started. RunnerFound={runner != null}, Role={grabRole}, InputSource={inputSource}"
+            $"Started. RunnerFound={runner != null}, Role={grabRole}, " +
+            $"InputSource={inputSource}, ToggleGrabMode={toggleGrabMode}"
         );
     }
 
@@ -80,7 +87,14 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
         UpdateHover();
         UpdateInput();
-        UpdateGrabTarget();
+
+        // Toggle 模式下，只要已经抓住物体，就持续发送目标位置。
+        // 非 Toggle 模式下，grabbedObject 也只会在按住期间存在。
+        if (grabbedObject != null)
+        {
+            UpdateGrabTarget();
+        }
+
         UpdateRayVisual();
     }
 
@@ -107,7 +121,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         {
             hoveredObject = hit.collider.GetComponentInParent<NetworkPhysicalGrabbable>();
 
-            if (hoveredObject != null)
+            if (debugHoverLog && hoveredObject != null)
             {
                 DebugMessage($"Hovering: {hoveredObject.name}, HitPoint={hit.point}");
             }
@@ -117,31 +131,81 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
     private void UpdateInput()
     {
         if (grabAction == null)
+        {
+            DebugMessage("UpdateInput skipped because grabAction is null.");
             return;
+        }
 
         if (runner == null)
+        {
+            DebugMessage("UpdateInput skipped because runner is null.");
             return;
+        }
 
+        if (toggleGrabMode)
+        {
+            if (grabAction.GetStateDown(inputSource))
+            {
+                if (grabbedObject == null)
+                {
+                    DebugMessage("Toggle click: begin grab.");
+                    TryBeginGrab();
+                }
+                else
+                {
+                    DebugMessage("Toggle click: release grab.");
+                    EndGrab();
+                }
+            }
+
+            return;
+        }
+
+        // 非 Toggle 模式：按下抓取，松开释放。
         if (grabAction.GetStateDown(inputSource))
         {
+            DebugMessage("Grab action down.");
             TryBeginGrab();
+        }
+
+        if (grabAction.GetState(inputSource) && grabbedObject != null)
+        {
+            DebugMessage($"Grab action holding. GrabbedObject={grabbedObject.name}");
         }
 
         if (grabAction.GetStateUp(inputSource))
         {
+            DebugMessage("Grab action up.");
             EndGrab();
         }
     }
 
     private void TryBeginGrab()
     {
-        if (hoveredObject == null)
+        NetworkPhysicalGrabbable targetObject = hoveredObject;
+
+        // 按下 click 的那一帧 hoveredObject 可能刚好为空，
+        // 所以这里重新做一次 raycast，避免“明明射线命中但抓取失败”。
+        if (targetObject == null)
+        {
+            targetObject = FindGrabbableUnderRay(out RaycastHit hitInfo);
+
+            if (targetObject != null)
+            {
+                DebugMessage(
+                    $"Grab press recovered object by direct raycast. " +
+                    $"Object={targetObject.name}, HitPoint={hitInfo.point}"
+                );
+            }
+        }
+
+        if (targetObject == null)
         {
             DebugMessage("Grab pressed but no NetworkPhysicalGrabbable was hit.");
             return;
         }
 
-        grabbedObject = hoveredObject;
+        grabbedObject = targetObject;
 
         grabbedDistance = Vector3.Distance(
             rayOrigin.position,
@@ -163,6 +227,8 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
             grabbedRotationOffset = Quaternion.identity;
         }
 
+        nextTargetSendTime = 0f;
+
         DebugMessage(
             $"Request grab. Object={grabbedObject.name}, " +
             $"Player={runner.LocalPlayer}, Role={grabRole}, Distance={grabbedDistance}"
@@ -182,20 +248,51 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
             return;
 
         if (runner == null)
+        {
+            DebugMessage("UpdateGrabTarget skipped because runner is null.");
             return;
+        }
+
+        if (targetSendRate <= 0f)
+        {
+            DebugMessage("UpdateGrabTarget skipped because targetSendRate <= 0.");
+            return;
+        }
 
         if (Time.time < nextTargetSendTime)
             return;
 
         nextTargetSendTime = Time.time + 1f / targetSendRate;
 
+        DebugMessage(
+            $"UpdateGrabTarget running. " +
+            $"Object={grabbedObject.name}, " +
+            $"SendRate={targetSendRate}, " +
+            $"NextSendTime={nextTargetSendTime}"
+        );
+
         SendGrabTargetImmediately();
     }
 
     private void SendGrabTargetImmediately()
     {
-        if (grabbedObject == null || rayOrigin == null || runner == null)
+        if (grabbedObject == null)
+        {
+            DebugMessage("SendGrabTargetImmediately skipped because grabbedObject is null.");
             return;
+        }
+
+        if (rayOrigin == null)
+        {
+            DebugMessage("SendGrabTargetImmediately skipped because rayOrigin is null.");
+            return;
+        }
+
+        if (runner == null)
+        {
+            DebugMessage("SendGrabTargetImmediately skipped because runner is null.");
+            return;
+        }
 
         Vector3 targetPosition =
             rayOrigin.position + rayOrigin.forward * grabbedDistance;
@@ -203,6 +300,15 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         Quaternion targetRotation = keepInitialRotation
             ? rayOrigin.rotation * grabbedRotationOffset
             : rayOrigin.rotation;
+
+        DebugMessage(
+            $"Sending grab target. " +
+            $"Object={grabbedObject.name}, " +
+            $"Player={runner.LocalPlayer}, " +
+            $"Role={grabRole}, " +
+            $"TargetPosition={targetPosition}, " +
+            $"TargetRotation={targetRotation.eulerAngles}"
+        );
 
         grabbedObject.RPC_UpdateGrabTarget(
             runner.LocalPlayer,
@@ -288,6 +394,36 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
             grabbedObject = null;
         }
+    }
+
+    private NetworkPhysicalGrabbable FindGrabbableUnderRay(out RaycastHit hitInfo)
+    {
+        hitInfo = default;
+
+        if (rayOrigin == null)
+            return null;
+
+        Ray ray = new Ray(rayOrigin.position, rayOrigin.forward);
+
+        if (Physics.Raycast(
+                ray,
+                out RaycastHit hit,
+                maxDistance,
+                interactableLayers,
+                QueryTriggerInteraction.Ignore))
+        {
+            hitInfo = hit;
+
+            NetworkPhysicalGrabbable grabbable =
+                hit.collider.GetComponentInParent<NetworkPhysicalGrabbable>();
+
+            if (grabbable != null)
+            {
+                return grabbable;
+            }
+        }
+
+        return null;
     }
 
     private void DebugMessage(string message)

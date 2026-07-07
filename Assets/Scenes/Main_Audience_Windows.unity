@@ -3749,6 +3749,7 @@ GameObject:
   - component: {fileID: 190327126}
   - component: {fileID: 190327125}
   - component: {fileID: 190327128}
+  - component: {fileID: 190327129}
   m_Layer: 0
   m_Name: ViveRightController
   m_TagString: Untagged
@@ -3796,7 +3797,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 190327124}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4aa8f1687bc5d964fa6e2aa9a61ac801, type: 3}
   m_Name: 
@@ -3851,6 +3852,40 @@ MonoBehaviour:
     actionPath: /actions/NewSet/in/righthandplace
     needsReinit: 0
   inputSource: 0
+--- !u!114 &190327129
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 190327124}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f234ffa469316743aefae0d71cd16bb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grabRole: 2
+  rayOrigin: {fileID: 1316534002}
+  maxDistance: 5
+  interactableLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  grabAction:
+    actionPath: /actions/NewSet/in/rightconcl
+    needsReinit: 0
+  inputSource: 2
+  lineRenderer: {fileID: 1770680984}
+  idleRayMaterial: {fileID: 2100000, guid: d4cf9771438c5464f9af69852a9cc898, type: 2}
+  hoverRayMaterial: {fileID: 2100000, guid: 73e599628364d8741ad95ae82c6a7fd1, type: 2}
+  grabRayMaterial: {fileID: 2100000, guid: 86d6eea8a4ef382458fa49f696525ef5, type: 2}
+  rayWidth: 0.01
+  keepInitialRotation: 1
+  defaultGrabDistance: 1.5
+  targetSendRate: 30
+  toggleGrabMode: 1
+  debugLog: 1
+  drawDebugRay: 1
+  debugHoverLog: 0
 --- !u!43 &191267542
 Mesh:
   m_ObjectHideFlags: 0
@@ -19525,57 +19560,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 749878069}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!1 &750800885
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 750800887}
-  - component: {fileID: 750800886}
-  m_Layer: 0
-  m_Name: SteamVRActionSetActivator
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &750800886
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 750800885}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 27991c206a5e66147bb8ee3ef31c8bac, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  actionSet:
-    actionSetPath: /actions/NewSet
-  forSources: 0
-  disableAllOtherActionSets: 0
-  activateOnStart: 1
-  deactivateOnDestroy: 1
-  initialPriority: 0
---- !u!4 &750800887
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 750800885}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.3042629, y: 0.8221591, z: -0.1177987}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &770476583
 GameObject:
   m_ObjectHideFlags: 0
@@ -33773,6 +33757,57 @@ Mesh:
     offset: 0
     size: 0
     path: 
+--- !u!1 &1474413849
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1474413851}
+  - component: {fileID: 1474413850}
+  m_Layer: 0
+  m_Name: SteamVRActionSetActivator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1474413850
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1474413849}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27991c206a5e66147bb8ee3ef31c8bac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  actionSet:
+    actionSetPath: /actions/NewSet
+  forSources: 0
+  disableAllOtherActionSets: 0
+  activateOnStart: 1
+  deactivateOnDestroy: 1
+  initialPriority: 0
+--- !u!4 &1474413851
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1474413849}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.48671162, y: 1.3586186, z: -0.0951435}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1474803794
 GameObject:
   m_ObjectHideFlags: 0
@@ -43933,7 +43968,7 @@ PrefabInstance:
       objectReference: {fileID: 1053044740}
     - target: {fileID: 3859846150802987004, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 1090
+      value: 1102
       objectReference: {fileID: 0}
     - target: {fileID: 4080988023871556050, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
@@ -43953,7 +43988,7 @@ PrefabInstance:
       objectReference: {fileID: 1892223286}
     - target: {fileID: 4813771740812048662, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 2334
+      value: 2346
       objectReference: {fileID: 0}
     - target: {fileID: 4976438376395507026, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
@@ -43981,4 +44016,4 @@ SceneRoots:
   - {fileID: 1997495373}
   - {fileID: 8559471736805223670}
   - {fileID: 190327127}
-  - {fileID: 750800887}
+  - {fileID: 1474413851}
