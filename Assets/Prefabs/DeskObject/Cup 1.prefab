@@ -52,7 +52,7 @@ MonoBehaviour:
   _data: {fileID: 0}
   _pointableElement: {fileID: 1735554724070214971}
   _rigidbody: {fileID: 3618934170290808794}
-  _physicsGrabbable: {fileID: -4172874967279812540}
+  _physicsGrabbable: {fileID: 0}
   _resetGrabOnGrabsUpdated: 1
   _scoringModifier:
     _positionRotationWeight: 0.5
@@ -4147,7 +4147,6 @@ GameObject:
   - component: {fileID: 5655919272754944016}
   - component: {fileID: 2873689877708158204}
   - component: {fileID: 2231876076890815251}
-  - component: {fileID: -4172874967279812540}
   - component: {fileID: 4427818872384074909}
   - component: {fileID: -1088332710220596810}
   - component: {fileID: -8356982307279679796}
@@ -4387,21 +4386,6 @@ MonoBehaviour:
   _handGrabPoses:
   - {fileID: 4427818872384074909}
   - {fileID: 679087169857741817}
---- !u!114 &-4172874967279812540
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4742363694045088060}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1bedaac29a943f844a7074b53c8bdf9f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _pointable: {fileID: 1735554724070214971}
-  _rigidbody: {fileID: 3618934170290808794}
-  _scaleMassWithSize: 1
 --- !u!114 &4427818872384074909
 MonoBehaviour:
   m_ObjectHideFlags: 0
