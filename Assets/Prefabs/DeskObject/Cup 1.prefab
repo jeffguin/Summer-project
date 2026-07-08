@@ -4150,6 +4150,7 @@ GameObject:
   - component: {fileID: -4172874967279812540}
   - component: {fileID: 4427818872384074909}
   - component: {fileID: -1088332710220596810}
+  - component: {fileID: -8356982307279679796}
   m_Layer: 14
   m_Name: Cup 1
   m_TagString: cup
@@ -4225,7 +4226,7 @@ MonoBehaviour:
   _maxGrabPoints: -1
   _rigidbody: {fileID: 3618934170290808794}
   _kinematicWhileSelected: 0
-  _throwWhenUnselected: 1
+  _throwWhenUnselected: 0
   _forceKinematicDisabled: 0
 --- !u!114 &8426681442240067887
 MonoBehaviour:
@@ -4480,6 +4481,26 @@ MonoBehaviour:
   grabbable: {fileID: 1735554724070214971}
   handGrabInteractable: {fileID: 2231876076890815251}
   debugLog: 1
+--- !u!114 &-8356982307279679796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4742363694045088060}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 932f64382b7bcdc42872c5111adad5fe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grabbable: {fileID: 1735554724070214971}
+  networkGrabbable: {fileID: 2873689877708158204}
+  grabRole: 1
+  keepInitialPositionOffset: 1
+  keepInitialRotationOffset: 1
+  targetSendRate: 30
+  debugLog: 1
+  debugMoveLog: 1
 --- !u!1 &6316871532150650910
 GameObject:
   m_ObjectHideFlags: 0

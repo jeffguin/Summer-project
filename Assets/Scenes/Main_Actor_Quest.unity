@@ -14057,7 +14057,7 @@ MonoBehaviour:
   _maxIterationsPerFrame: 3
   _data: {fileID: 0}
   _hand: {fileID: 869376974}
-  _rigidbody: {fileID: 0}
+  _rigidbody: {fileID: 909483161}
   _handGrabApi: {fileID: 1875054481}
   _supportedGrabTypes: 3
   _hoverOnZeroStrength: 0
@@ -14554,6 +14554,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 907661072}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!54 &909483161 stripped
+Rigidbody:
+  m_CorrespondingSourceObject: {fileID: 2579930074651778204, guid: eaf7b4c53f0c63542ab03ccbee9e5b2e, type: 3}
+  m_PrefabInstance: {fileID: 1658652334}
+  m_PrefabAsset: {fileID: 0}
 --- !u!43 &909510743
 Mesh:
   m_ObjectHideFlags: 0
@@ -27059,11 +27064,26 @@ PrefabInstance:
       propertyPath: _config
       value: 
       objectReference: {fileID: 4900000, guid: 4e9a1b0314e2cd5408ada3086d414d36, type: 3}
+    - target: {fileID: 8808506167954545870, guid: 2877e5d6e63f2424d89d0d53d4103a18, type: 3}
+      propertyPath: _faceExpressions
+      value: 
+      objectReference: {fileID: 1977161296}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2877e5d6e63f2424d89d0d53d4103a18, type: 3}
+--- !u!114 &1977161296 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 1760553601899910319, guid: 2877e5d6e63f2424d89d0d53d4103a18, type: 3}
+  m_PrefabInstance: {fileID: 1977161295}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a95044baf65b10c4e89b246d2f881ac9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1979956001
 GameObject:
   m_ObjectHideFlags: 0
@@ -27337,7 +27357,7 @@ PrefabInstance:
       objectReference: {fileID: 656265006}
     - target: {fileID: 3859846150802987004, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 1093
+      value: 1108
       objectReference: {fileID: 0}
     - target: {fileID: 4080988023871556050, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
@@ -27353,7 +27373,7 @@ PrefabInstance:
       objectReference: {fileID: 2128266092}
     - target: {fileID: 4813771740812048662, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 2337
+      value: 2352
       objectReference: {fileID: 0}
     - target: {fileID: 4976438376395507026, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
