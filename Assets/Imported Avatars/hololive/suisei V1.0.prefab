@@ -1136,6 +1136,7 @@ GameObject:
   - component: {fileID: 2535239746267928641}
   - component: {fileID: 3559716155141334842}
   - component: {fileID: 8379464124261304993}
+  - component: {fileID: -3218174331674725163}
   m_Layer: 0
   m_Name: suisei V1.0
   m_TagString: Untagged
@@ -1176,7 +1177,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   blockId: 1735b3a5-6b02-42a3-bbee-e48234afe14b
-  instanceId: 25491949-f93e-4a5d-9bb1-8e3aac9e1982
+  instanceId: 52a3ea05-d78f-433e-adfa-8f19194b0e85
   version: 1
   installationRoutineCheckpoint:
     _installationRoutineId: 
@@ -1215,7 +1216,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f33d97102f288541ac193243cdafeec, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _config: {fileID: 4900000, guid: 85bb9c4ab73a9e041bc51882f63a9c99, type: 3}
+  _config: {fileID: 4900000, guid: 4e9a1b0314e2cd5408ada3086d414d36, type: 3}
   _jointPairs:
   - Joint: {fileID: 4721436159742545727}
     ParentJoint: {fileID: 0}
@@ -1820,6 +1821,24 @@ MonoBehaviour:
   _acceleration: 5
   _groundDamping: 40
   _joystickThreshold: 0.25
+--- !u!114 &-3218174331674725163
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1927513248513706656}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 836323263
+  ObjectInterest: 1
+  Flags: 262145
+  NestedObjects: []
+  NetworkedBehaviours: []
+  ForceRemoteRenderTimeframe: 0
 --- !u!1 &1946599098812441120
 GameObject:
   m_ObjectHideFlags: 0

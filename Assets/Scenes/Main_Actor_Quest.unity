@@ -879,7 +879,7 @@ MonoBehaviour:
   _clientRetryDelay: 3
   _maxClientRetryCount: 0
   _actorAvatarPrefab:
-    RawGuidValue: a1c571ee69a52bc46a912852ed75da6f
+    RawGuidValue: 00000000000000000000000000000000
   _webRtcSignalHubPrefab:
     RawGuidValue: b7f094163cd314d438c59307ae25d098
   _networkWebcamControlHubPrefab:
@@ -27276,7 +27276,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1927513248513706656, guid: 2877e5d6e63f2424d89d0d53d4103a18, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2261043527398197424, guid: 2877e5d6e63f2424d89d0d53d4103a18, type: 3}
       propertyPath: m_LocalPosition.x
