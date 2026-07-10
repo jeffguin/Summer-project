@@ -13,6 +13,10 @@ public class WebRtcSignalHub : NetworkBehaviour
     [Header("Chunk Settings")]
     [SerializeField] private int maxChunkSize = 250;
 
+    [Header("Debug")]
+    [SerializeField] private bool debugLog = true;
+    [SerializeField] private bool debugRpcReceiveLog = true;
+
     private int nextSignalId = 1;
 
     private readonly Dictionary<string, SignalChunkBuffer> chunkBuffers =
@@ -30,24 +34,59 @@ public class WebRtcSignalHub : NetworkBehaviour
     private void Awake()
     {
         Instance = this;
+        DebugMessage("Awake. Instance assigned. GameObject = " + gameObject.name);
     }
 
     public override void Spawned()
     {
         Instance = this;
-        Debug.Log("WebRtcSignalHub spawned. Local player: " + Runner.LocalPlayer);
+
+        DebugMessage(
+            "Spawned. " +
+            "LocalPlayer = " + Runner.LocalPlayer +
+            ", IsServer = " + Runner.IsServer +
+            ", Object = " + gameObject.name
+        );
+    }
+
+    public override void Despawned(NetworkRunner runner, bool hasState)
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+
+        chunkBuffers.Clear();
+
+        DebugMessage("Despawned. Instance cleared.");
     }
 
     public PlayerRef GetOtherPlayer()
     {
         if (Runner == null)
+        {
+            DebugMessage("GetOtherPlayer failed. Runner is null.");
             return PlayerRef.None;
+        }
 
         foreach (PlayerRef player in Runner.ActivePlayers)
         {
             if (player != Runner.LocalPlayer)
+            {
+                DebugMessage(
+                    "GetOtherPlayer result = " + player +
+                    ", LocalPlayer = " + Runner.LocalPlayer
+                );
+
                 return player;
+            }
         }
+
+        DebugMessage(
+            "GetOtherPlayer failed. No other player found. " +
+            "LocalPlayer = " + Runner.LocalPlayer +
+            ", ActivePlayersCount may be 1."
+        );
 
         return PlayerRef.None;
     }
@@ -62,13 +101,19 @@ public class WebRtcSignalHub : NetworkBehaviour
 
         if (target == PlayerRef.None)
         {
-            Debug.LogWarning("WebRtcSignalHub: target is None.");
+            Debug.LogWarning("WebRtcSignalHub: target is None. Type = " + type);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(type))
+        {
+            Debug.LogWarning("WebRtcSignalHub: type is empty.");
             return;
         }
 
         if (string.IsNullOrEmpty(payload))
         {
-            Debug.LogWarning("WebRtcSignalHub: payload is empty.");
+            Debug.LogWarning("WebRtcSignalHub: payload is empty. Type = " + type);
             return;
         }
 
@@ -78,9 +123,15 @@ public class WebRtcSignalHub : NetworkBehaviour
         int signalId = nextSignalId++;
         int totalChunks = Mathf.CeilToInt(payload.Length / (float)maxChunkSize);
 
-        Debug.Log(
-            $"WebRtcSignalHub: Sending signal. " +
-            $"Type: {type}, PayloadLength: {payload.Length}, Chunks: {totalChunks}, Target: {target}"
+        DebugMessage(
+            "Sending signal. " +
+            "Type = " + type +
+            ", SignalId = " + signalId +
+            ", PayloadLength = " + payload.Length +
+            ", Chunks = " + totalChunks +
+            ", From = " + Runner.LocalPlayer +
+            ", Target = " + target +
+            ", IsServer = " + Runner.IsServer
         );
 
         for (int i = 0; i < totalChunks; i++)
@@ -112,13 +163,51 @@ public class WebRtcSignalHub : NetworkBehaviour
         string chunk)
     {
         if (Runner == null)
+        {
+            Debug.LogWarning("WebRtcSignalHub: RPC received but Runner is null. Type = " + type);
             return;
+        }
+
+        if (debugRpcReceiveLog)
+        {
+            DebugMessage(
+                "RPC received. " +
+                "Type = " + type +
+                ", SignalId = " + signalId +
+                ", Chunk = " + chunkIndex + "/" + totalChunks +
+                ", From = " + from +
+                ", Target = " + target +
+                ", LocalPlayer = " + Runner.LocalPlayer +
+                ", IsServer = " + Runner.IsServer +
+                ", ChunkLength = " + (chunk != null ? chunk.Length : 0)
+            );
+        }
 
         if (Runner.LocalPlayer != target)
+        {
+            if (debugRpcReceiveLog)
+            {
+                DebugMessage(
+                    "RPC ignored because local player is not target. " +
+                    "Type = " + type +
+                    ", Target = " + target +
+                    ", LocalPlayer = " + Runner.LocalPlayer
+                );
+            }
+
             return;
+        }
 
         if (string.IsNullOrEmpty(chunk))
+        {
+            Debug.LogWarning(
+                "WebRtcSignalHub: RPC chunk is empty. " +
+                "Type = " + type +
+                ", SignalId = " + signalId
+            );
+
             return;
+        }
 
         string key = from.ToString() + "_" + signalId;
 
@@ -134,11 +223,26 @@ public class WebRtcSignalHub : NetworkBehaviour
             };
 
             chunkBuffers[key] = buffer;
+
+            DebugMessage(
+                "Created chunk buffer. " +
+                "Key = " + key +
+                ", Type = " + type +
+                ", TotalChunks = " + totalChunks +
+                ", From = " + from
+            );
         }
 
         if (chunkIndex < 0 || chunkIndex >= buffer.TotalChunks)
         {
-            Debug.LogWarning("WebRtcSignalHub: Invalid chunk index: " + chunkIndex);
+            Debug.LogWarning(
+                "WebRtcSignalHub: Invalid chunk index. " +
+                "Type = " + type +
+                ", SignalId = " + signalId +
+                ", ChunkIndex = " + chunkIndex +
+                ", TotalChunks = " + buffer.TotalChunks
+            );
+
             return;
         }
 
@@ -146,6 +250,22 @@ public class WebRtcSignalHub : NetworkBehaviour
         {
             buffer.Chunks[chunkIndex] = chunk;
             buffer.ReceivedCount++;
+
+            DebugMessage(
+                "Chunk stored. " +
+                "Type = " + type +
+                ", SignalId = " + signalId +
+                ", Received = " + buffer.ReceivedCount + "/" + buffer.TotalChunks
+            );
+        }
+        else
+        {
+            DebugMessage(
+                "Duplicate chunk ignored. " +
+                "Type = " + type +
+                ", SignalId = " + signalId +
+                ", ChunkIndex = " + chunkIndex
+            );
         }
 
         if (buffer.ReceivedCount < buffer.TotalChunks)
@@ -157,7 +277,13 @@ public class WebRtcSignalHub : NetworkBehaviour
         {
             if (buffer.Chunks[i] == null)
             {
-                Debug.LogWarning("WebRtcSignalHub: Missing chunk: " + i);
+                Debug.LogWarning(
+                    "WebRtcSignalHub: Missing chunk. " +
+                    "Type = " + buffer.Type +
+                    ", SignalId = " + signalId +
+                    ", MissingChunk = " + i
+                );
+
                 return;
             }
 
@@ -168,11 +294,32 @@ public class WebRtcSignalHub : NetworkBehaviour
 
         chunkBuffers.Remove(key);
 
-        Debug.Log(
-            $"WebRtcSignalHub: Reassembled signal. " +
-            $"Type: {buffer.Type}, PayloadLength: {fullPayload.Length}, From: {buffer.From}"
+        DebugMessage(
+            "Reassembled signal. " +
+            "Type = " + buffer.Type +
+            ", SignalId = " + signalId +
+            ", PayloadLength = " + fullPayload.Length +
+            ", From = " + buffer.From +
+            ", LocalPlayer = " + Runner.LocalPlayer
         );
 
+        if (OnSignalReceived == null)
+        {
+            Debug.LogWarning(
+                "WebRtcSignalHub: Signal reassembled but OnSignalReceived has no subscribers. " +
+                "Type = " + buffer.Type +
+                ", From = " + buffer.From
+            );
+        }
+
         OnSignalReceived?.Invoke(buffer.From, buffer.Type, fullPayload);
+    }
+
+    private void DebugMessage(string message)
+    {
+        if (!debugLog)
+            return;
+
+        Debug.Log("WebRtcSignalHub: " + message);
     }
 }

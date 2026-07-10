@@ -5,10 +5,27 @@ using Fusion;
 using Unity.WebRTC;
 using UnityEngine;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
+
 public class WebRtcVideoReceiver : MonoBehaviour
 {
     [Header("Display")]
     [SerializeField] private VideoDisplayScreen videoDisplayScreen;
+
+    [Header("Local Microphone Sending")]
+    [SerializeField] private bool enableMicrophone = true;
+
+    [Tooltip("Leave empty to use the default microphone.")]
+    [SerializeField] private string microphoneDeviceName = "";
+
+    [SerializeField] private int microphoneSampleRate = 48000;
+    [SerializeField] private int microphoneClipLengthSeconds = 1;
+    [SerializeField] private AudioSource localMicrophoneAudioSource;
+
+    [Header("Remote Audio Playback")]
+    [SerializeField] private AudioSource remoteAudioSource;
 
     [Header("ICE / STUN / TURN Settings")]
     [SerializeField] private bool useGoogleStun = true;
@@ -27,6 +44,13 @@ public class WebRtcVideoReceiver : MonoBehaviour
 
     private RTCPeerConnection peerConnection;
     private Coroutine webRtcUpdateCoroutine;
+
+    private AudioStreamTrack localAudioTrack;
+    private VideoStreamTrack remoteVideoTrack;
+    private AudioStreamTrack remoteAudioTrack;
+
+    private bool microphoneStartedByThisScript = false;
+    private string activeMicrophoneDeviceName = null;
 
     private bool remoteDescriptionSet = false;
     private readonly Queue<string> pendingCandidates = new Queue<string>();
@@ -85,6 +109,43 @@ public class WebRtcVideoReceiver : MonoBehaviour
         Debug.Log("WebRtcVideoReceiver: Connected to WebRtcSignalHub.");
     }
 
+    // =========================================================
+    // Microphone device selection API for PerformerWebcamControlPanel
+    // =========================================================
+
+    public void SetMicrophoneDeviceName(string deviceName)
+    {
+        microphoneDeviceName = deviceName;
+
+        Debug.Log(
+            "WebRtcVideoReceiver: Actor microphone device selected: " +
+            (string.IsNullOrEmpty(microphoneDeviceName) ? "Default" : microphoneDeviceName)
+        );
+
+        if (localAudioTrack != null || microphoneStartedByThisScript)
+        {
+            Debug.LogWarning(
+                "WebRtcVideoReceiver: Microphone device changed while WebRTC audio is active. " +
+                "The new device will be used after restarting the WebRTC connection."
+            );
+        }
+    }
+
+    public string GetMicrophoneDeviceName()
+    {
+        return microphoneDeviceName;
+    }
+
+    public string[] GetLocalMicrophoneDevices()
+    {
+        if (Microphone.devices == null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return Microphone.devices;
+    }
+
     private void CreatePeerConnection()
     {
         if (peerConnection != null)
@@ -141,39 +202,21 @@ public class WebRtcVideoReceiver : MonoBehaviour
 
             VideoStreamTrack videoTrack = e.Track as VideoStreamTrack;
 
-            if (videoTrack == null)
+            if (videoTrack != null)
             {
-                Debug.LogWarning("WebRtcVideoReceiver: Received track is not VideoStreamTrack.");
+                HandleRemoteVideoTrack(videoTrack);
                 return;
             }
 
-            Debug.Log("WebRtcVideoReceiver: Remote video track received.");
+            AudioStreamTrack audioTrack = e.Track as AudioStreamTrack;
 
-            videoTrack.OnVideoReceived += texture =>
+            if (audioTrack != null)
             {
-                Debug.Log("WebRtcVideoReceiver: OnVideoReceived fired.");
+                HandleRemoteAudioTrack(audioTrack);
+                return;
+            }
 
-                if (texture == null)
-                {
-                    Debug.LogWarning("WebRtcVideoReceiver: Received null texture.");
-                    return;
-                }
-
-                Debug.Log(
-                    "WebRtcVideoReceiver: Remote texture received. " +
-                    "Size = " + texture.width + "x" + texture.height
-                );
-
-                if (videoDisplayScreen == null)
-                {
-                    Debug.LogError("WebRtcVideoReceiver: videoDisplayScreen is null. Cannot display texture.");
-                    return;
-                }
-
-                videoDisplayScreen.SetTexture(texture);
-
-                Debug.Log("WebRtcVideoReceiver: Texture sent to VideoDisplayScreen.");
-            };
+            Debug.LogWarning("WebRtcVideoReceiver: Received unsupported remote track kind: " + e.Track.Kind);
         };
 
         peerConnection.OnIceConnectionChange = state =>
@@ -187,6 +230,172 @@ public class WebRtcVideoReceiver : MonoBehaviour
         };
 
         Debug.Log("WebRtcVideoReceiver: PeerConnection created.");
+    }
+
+    private void HandleRemoteVideoTrack(VideoStreamTrack videoTrack)
+    {
+        Debug.Log("WebRtcVideoReceiver: Remote video track received.");
+
+        if (videoTrack == null)
+        {
+            Debug.LogWarning("WebRtcVideoReceiver: Remote video track is null.");
+            return;
+        }
+
+        // Important: keep a member reference to the remote track.
+        // Without this, OnVideoReceived can be unreliable in Unity WebRTC.
+        remoteVideoTrack = videoTrack;
+
+        remoteVideoTrack.OnVideoReceived += texture =>
+        {
+            Debug.Log("WebRtcVideoReceiver: OnVideoReceived fired.");
+
+            if (texture == null)
+            {
+                Debug.LogWarning("WebRtcVideoReceiver: Received null texture.");
+                return;
+            }
+
+            Debug.Log(
+                "WebRtcVideoReceiver: Remote texture received. " +
+                "Size = " + texture.width + "x" + texture.height
+            );
+
+            if (videoDisplayScreen == null)
+            {
+                Debug.LogError("WebRtcVideoReceiver: videoDisplayScreen is null. Cannot display texture.");
+                return;
+            }
+
+            videoDisplayScreen.SetTexture(texture);
+
+            Debug.Log("WebRtcVideoReceiver: Texture sent to VideoDisplayScreen.");
+        };
+
+        Debug.Log("WebRtcVideoReceiver: OnVideoReceived callback registered.");
+    }
+
+    private void HandleRemoteAudioTrack(AudioStreamTrack audioTrack)
+    {
+        Debug.Log("WebRtcVideoReceiver: Remote audio track received.");
+
+        if (audioTrack == null)
+        {
+            Debug.LogWarning("WebRtcVideoReceiver: Remote audio track is null.");
+            return;
+        }
+
+        // Keep a member reference to the remote audio track.
+        remoteAudioTrack = audioTrack;
+
+        if (remoteAudioSource == null)
+        {
+            remoteAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        remoteAudioSource.playOnAwake = false;
+        remoteAudioSource.loop = true;
+        remoteAudioSource.spatialBlend = 0f;
+        remoteAudioSource.volume = 1f;
+
+        remoteAudioSource.SetTrack(remoteAudioTrack);
+        remoteAudioSource.Play();
+
+        Debug.Log("WebRtcVideoReceiver: Remote audio track attached to AudioSource.");
+    }
+
+    private IEnumerator StartLocalMicrophoneAndAddAudioTrack()
+    {
+        if (peerConnection == null)
+            yield break;
+
+        if (localAudioTrack != null)
+        {
+            Debug.Log("WebRtcVideoReceiver: Local audio track already exists.");
+            yield break;
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            Debug.Log("WebRtcVideoReceiver: Requesting Android microphone permission...");
+
+            Permission.RequestUserPermission(Permission.Microphone);
+
+            float permissionTimeout = Time.time + 5f;
+
+            while (!Permission.HasUserAuthorizedPermission(Permission.Microphone) &&
+                   Time.time < permissionTimeout)
+            {
+                yield return null;
+            }
+
+            if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+            {
+                Debug.LogWarning("WebRtcVideoReceiver: Microphone permission was not granted.");
+                yield break;
+            }
+        }
+#endif
+
+        if (Microphone.devices == null || Microphone.devices.Length == 0)
+        {
+            Debug.LogWarning("WebRtcVideoReceiver: No microphone devices found.");
+            yield break;
+        }
+
+        activeMicrophoneDeviceName =
+            string.IsNullOrEmpty(microphoneDeviceName)
+                ? Microphone.devices[0]
+                : microphoneDeviceName;
+
+        Debug.Log("WebRtcVideoReceiver: Starting microphone: " + activeMicrophoneDeviceName);
+
+        if (localMicrophoneAudioSource == null)
+        {
+            localMicrophoneAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        localMicrophoneAudioSource.playOnAwake = false;
+        localMicrophoneAudioSource.loop = true;
+        localMicrophoneAudioSource.spatialBlend = 0f;
+
+        AudioClip micClip = Microphone.Start(
+            activeMicrophoneDeviceName,
+            true,
+            microphoneClipLengthSeconds,
+            microphoneSampleRate
+        );
+
+        microphoneStartedByThisScript = true;
+
+        if (micClip == null)
+        {
+            Debug.LogWarning("WebRtcVideoReceiver: Microphone.Start returned null AudioClip.");
+            yield break;
+        }
+
+        float startTimeout = Time.time + 3f;
+
+        while (Microphone.GetPosition(activeMicrophoneDeviceName) <= 0 &&
+               Time.time < startTimeout)
+        {
+            yield return null;
+        }
+
+        if (Microphone.GetPosition(activeMicrophoneDeviceName) <= 0)
+        {
+            Debug.LogWarning("WebRtcVideoReceiver: Microphone did not start producing samples.");
+            yield break;
+        }
+
+        localMicrophoneAudioSource.clip = micClip;
+        localMicrophoneAudioSource.Play();
+
+        localAudioTrack = new AudioStreamTrack(localMicrophoneAudioSource);
+        peerConnection.AddTrack(localAudioTrack);
+
+        Debug.Log("WebRtcVideoReceiver: Local microphone audio track added.");
     }
 
     private RTCConfiguration BuildRtcConfiguration()
@@ -314,6 +523,11 @@ public class WebRtcVideoReceiver : MonoBehaviour
         remoteDescriptionSet = true;
         FlushPendingCandidates();
 
+        if (enableMicrophone)
+        {
+            yield return StartLocalMicrophoneAndAddAudioTrack();
+        }
+
         RTCSessionDescriptionAsyncOperation answerOp =
             peerConnection.CreateAnswer();
 
@@ -417,6 +631,45 @@ public class WebRtcVideoReceiver : MonoBehaviour
         if (videoDisplayScreen != null)
         {
             videoDisplayScreen.ClearTexture();
+        }
+
+        if (localAudioTrack != null)
+        {
+            localAudioTrack.Dispose();
+            localAudioTrack = null;
+        }
+
+        if (remoteVideoTrack != null)
+        {
+            remoteVideoTrack.Dispose();
+            remoteVideoTrack = null;
+        }
+
+        if (remoteAudioTrack != null)
+        {
+            remoteAudioTrack.Dispose();
+            remoteAudioTrack = null;
+        }
+
+        if (localMicrophoneAudioSource != null)
+        {
+            localMicrophoneAudioSource.Stop();
+            localMicrophoneAudioSource.clip = null;
+        }
+
+        if (microphoneStartedByThisScript &&
+            !string.IsNullOrEmpty(activeMicrophoneDeviceName))
+        {
+            Microphone.End(activeMicrophoneDeviceName);
+        }
+
+        microphoneStartedByThisScript = false;
+        activeMicrophoneDeviceName = null;
+
+        if (remoteAudioSource != null)
+        {
+            remoteAudioSource.Stop();
+            remoteAudioSource.clip = null;
         }
 
         if (peerConnection != null)

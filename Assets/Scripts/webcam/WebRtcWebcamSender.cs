@@ -6,6 +6,10 @@ using Unity.WebRTC;
 using UnityEngine;
 using UnityEngine.UI;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
+
 public class WebRtcWebcamSender : MonoBehaviour
 {
     [Header("References")]
@@ -13,6 +17,19 @@ public class WebRtcWebcamSender : MonoBehaviour
 
     [Header("Optional Local Test UI")]
     [SerializeField] private Button startStreamButton;
+
+    [Header("Local Microphone Sending")]
+    [SerializeField] private bool enableMicrophone = true;
+
+    [Tooltip("Leave empty to use the default microphone.")]
+    [SerializeField] private string microphoneDeviceName = "";
+
+    [SerializeField] private int microphoneSampleRate = 48000;
+    [SerializeField] private int microphoneClipLengthSeconds = 1;
+    [SerializeField] private AudioSource localMicrophoneAudioSource;
+
+    [Header("Remote Audio Playback")]
+    [SerializeField] private AudioSource remoteAudioSource;
 
     [Header("ICE / STUN / TURN Settings")]
     [SerializeField] private bool useGoogleStun = true;
@@ -31,12 +48,17 @@ public class WebRtcWebcamSender : MonoBehaviour
 
     private RTCPeerConnection peerConnection;
     private VideoStreamTrack videoTrack;
+    private AudioStreamTrack localAudioTrack;
+
     private Coroutine webRtcUpdateCoroutine;
     private Coroutine startRoutine;
 
     private bool remoteDescriptionSet = false;
     private bool isStreaming = false;
     private bool isStarting = false;
+
+    private bool microphoneStartedByThisScript = false;
+    private string activeMicrophoneDeviceName = null;
 
     private readonly List<IceSignal> pendingRemoteCandidates = new List<IceSignal>();
 
@@ -52,6 +74,19 @@ public class WebRtcWebcamSender : MonoBehaviour
         public string candidate;
         public string sdpMid;
         public int sdpMLineIndex;
+    }
+
+    [Serializable]
+    private class MicrophoneDeviceListSignal
+    {
+        public string[] devices;
+        public string selectedDevice;
+    }
+
+    [Serializable]
+    private class MicrophoneDeviceSelectSignal
+    {
+        public string deviceName;
     }
 
     private void Start()
@@ -78,7 +113,115 @@ public class WebRtcWebcamSender : MonoBehaviour
         }
 
         WebRtcSignalHub.Instance.OnSignalReceived += OnSignalReceived;
+
         Debug.Log("WebRtcWebcamSender: Connected to WebRtcSignalHub.");
+    }
+
+    // =========================================================
+    // Microphone device selection API for remote Actor menu
+    // =========================================================
+
+    public void SetMicrophoneDeviceName(string deviceName)
+    {
+        microphoneDeviceName = deviceName;
+
+        Debug.Log(
+            "WebRtcWebcamSender: Audience microphone device selected: " +
+            (string.IsNullOrEmpty(microphoneDeviceName) ? "Default" : microphoneDeviceName)
+        );
+
+        if (isStreaming || isStarting || localAudioTrack != null)
+        {
+            Debug.LogWarning(
+                "WebRtcWebcamSender: Microphone device changed while WebRTC is active. " +
+                "The new device will be used after restarting the WebRTC stream."
+            );
+        }
+    }
+
+    public string GetMicrophoneDeviceName()
+    {
+        return microphoneDeviceName;
+    }
+
+    public string[] GetLocalMicrophoneDevices()
+    {
+        if (Microphone.devices == null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return Microphone.devices;
+    }
+
+    private void SendAudienceMicrophoneDeviceList(PlayerRef target)
+    {
+        if (WebRtcSignalHub.Instance == null)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Cannot send microphone list. SignalHub is null.");
+            return;
+        }
+
+        string[] devices = GetLocalMicrophoneDevices();
+
+        MicrophoneDeviceListSignal signal = new MicrophoneDeviceListSignal
+        {
+            devices = devices,
+            selectedDevice = microphoneDeviceName
+        };
+
+        string json = JsonUtility.ToJson(signal);
+
+        Debug.Log(
+            "WebRtcWebcamSender: Sending audience microphone device list. " +
+            "Count = " + devices.Length +
+            ", Selected = " + (string.IsNullOrEmpty(microphoneDeviceName) ? "Default" : microphoneDeviceName) +
+            ", PayloadLength = " + json.Length
+        );
+
+        WebRtcSignalHub.Instance.SendSignal(target, "audience_mic_list", json);
+    }
+
+    private void HandleAudienceMicrophoneSelection(string payload)
+    {
+        MicrophoneDeviceSelectSignal signal =
+            JsonUtility.FromJson<MicrophoneDeviceSelectSignal>(payload);
+
+        if (signal == null)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Invalid audience microphone selection payload.");
+            return;
+        }
+
+        string requestedDevice = signal.deviceName;
+
+        if (!string.IsNullOrEmpty(requestedDevice))
+        {
+            string[] devices = GetLocalMicrophoneDevices();
+
+            bool exists = false;
+
+            foreach (string device in devices)
+            {
+                if (device == requestedDevice)
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists)
+            {
+                Debug.LogWarning(
+                    "WebRtcWebcamSender: Requested microphone device does not exist on Audience PC: " +
+                    requestedDevice
+                );
+
+                return;
+            }
+        }
+
+        SetMicrophoneDeviceName(requestedDevice);
     }
 
     public void StartWebcamStream()
@@ -113,15 +256,9 @@ public class WebRtcWebcamSender : MonoBehaviour
 
         WebCamTexture webcamTexture = localWebcamManager.GetCurrentWebcamTexture();
 
-        if (webcamTexture == null)
+        if (webcamTexture == null || !webcamTexture.isPlaying)
         {
-            Debug.LogWarning("WebRtcWebcamSender: WebcamTexture is null. Start local webcam first.");
-            return;
-        }
-
-        if (!webcamTexture.isPlaying)
-        {
-            Debug.LogWarning("WebRtcWebcamSender: WebcamTexture is not playing. Start local webcam first.");
+            Debug.LogWarning("WebRtcWebcamSender: WebcamTexture is null or not playing. Start local webcam first.");
             return;
         }
 
@@ -160,7 +297,13 @@ public class WebRtcWebcamSender : MonoBehaviour
 
         Debug.Log("WebRtcWebcamSender: Video track added.");
 
+        if (enableMicrophone)
+        {
+            yield return StartLocalMicrophoneAndAddAudioTrack();
+        }
+
         RTCSessionDescriptionAsyncOperation offerOp = peerConnection.CreateOffer();
+
         yield return offerOp;
 
         if (offerOp.IsError)
@@ -205,6 +348,100 @@ public class WebRtcWebcamSender : MonoBehaviour
         Debug.Log("WebRtcWebcamSender: WebRTC offer sent.");
     }
 
+    private IEnumerator StartLocalMicrophoneAndAddAudioTrack()
+    {
+        if (peerConnection == null)
+            yield break;
+
+        if (localAudioTrack != null)
+        {
+            Debug.Log("WebRtcWebcamSender: Local audio track already exists.");
+            yield break;
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            Debug.Log("WebRtcWebcamSender: Requesting Android microphone permission...");
+
+            Permission.RequestUserPermission(Permission.Microphone);
+
+            float permissionTimeout = Time.time + 5f;
+
+            while (!Permission.HasUserAuthorizedPermission(Permission.Microphone) &&
+                   Time.time < permissionTimeout)
+            {
+                yield return null;
+            }
+
+            if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+            {
+                Debug.LogWarning("WebRtcWebcamSender: Microphone permission was not granted.");
+                yield break;
+            }
+        }
+#endif
+
+        if (Microphone.devices == null || Microphone.devices.Length == 0)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: No microphone devices found.");
+            yield break;
+        }
+
+        activeMicrophoneDeviceName =
+            string.IsNullOrEmpty(microphoneDeviceName)
+                ? Microphone.devices[0]
+                : microphoneDeviceName;
+
+        Debug.Log("WebRtcWebcamSender: Starting microphone: " + activeMicrophoneDeviceName);
+
+        if (localMicrophoneAudioSource == null)
+        {
+            localMicrophoneAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        localMicrophoneAudioSource.playOnAwake = false;
+        localMicrophoneAudioSource.loop = true;
+        localMicrophoneAudioSource.spatialBlend = 0f;
+
+        AudioClip micClip = Microphone.Start(
+            activeMicrophoneDeviceName,
+            true,
+            microphoneClipLengthSeconds,
+            microphoneSampleRate
+        );
+
+        microphoneStartedByThisScript = true;
+
+        if (micClip == null)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Microphone.Start returned null AudioClip.");
+            yield break;
+        }
+
+        float startTimeout = Time.time + 3f;
+
+        while (Microphone.GetPosition(activeMicrophoneDeviceName) <= 0 &&
+               Time.time < startTimeout)
+        {
+            yield return null;
+        }
+
+        if (Microphone.GetPosition(activeMicrophoneDeviceName) <= 0)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Microphone did not start producing samples.");
+            yield break;
+        }
+
+        localMicrophoneAudioSource.clip = micClip;
+        localMicrophoneAudioSource.Play();
+
+        localAudioTrack = new AudioStreamTrack(localMicrophoneAudioSource);
+        peerConnection.AddTrack(localAudioTrack);
+
+        Debug.Log("WebRtcWebcamSender: Local microphone audio track added.");
+    }
+
     public void StopWebcamStream()
     {
         if (startRoutine != null)
@@ -222,6 +459,33 @@ public class WebRtcWebcamSender : MonoBehaviour
         {
             videoTrack.Dispose();
             videoTrack = null;
+        }
+
+        if (localAudioTrack != null)
+        {
+            localAudioTrack.Dispose();
+            localAudioTrack = null;
+        }
+
+        if (localMicrophoneAudioSource != null)
+        {
+            localMicrophoneAudioSource.Stop();
+            localMicrophoneAudioSource.clip = null;
+        }
+
+        if (microphoneStartedByThisScript &&
+            !string.IsNullOrEmpty(activeMicrophoneDeviceName))
+        {
+            Microphone.End(activeMicrophoneDeviceName);
+        }
+
+        microphoneStartedByThisScript = false;
+        activeMicrophoneDeviceName = null;
+
+        if (remoteAudioSource != null)
+        {
+            remoteAudioSource.Stop();
+            remoteAudioSource.clip = null;
         }
 
         if (peerConnection != null)
@@ -278,6 +542,22 @@ public class WebRtcWebcamSender : MonoBehaviour
             WebRtcSignalHub.Instance.SendSignal(target, "candidate", json);
         };
 
+        peerConnection.OnTrack = e =>
+        {
+            Debug.Log("WebRtcWebcamSender: OnTrack fired. Track kind: " + e.Track.Kind);
+
+            AudioStreamTrack audioTrack = e.Track as AudioStreamTrack;
+
+            if (audioTrack != null)
+            {
+                Debug.Log("WebRtcWebcamSender: Remote audio track received.");
+                AttachRemoteAudioTrack(audioTrack);
+                return;
+            }
+
+            Debug.LogWarning("WebRtcWebcamSender: Received unsupported remote track kind: " + e.Track.Kind);
+        };
+
         peerConnection.OnIceConnectionChange = state =>
         {
             Debug.Log("WebRtcWebcamSender: ICE state: " + state);
@@ -289,6 +569,24 @@ public class WebRtcWebcamSender : MonoBehaviour
         };
 
         Debug.Log("WebRtcWebcamSender: PeerConnection created.");
+    }
+
+    private void AttachRemoteAudioTrack(AudioStreamTrack audioTrack)
+    {
+        if (remoteAudioSource == null)
+        {
+            remoteAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        remoteAudioSource.playOnAwake = false;
+        remoteAudioSource.loop = true;
+        remoteAudioSource.spatialBlend = 0f;
+        remoteAudioSource.volume = 1f;
+
+        remoteAudioSource.SetTrack(audioTrack);
+        remoteAudioSource.Play();
+
+        Debug.Log("WebRtcWebcamSender: Remote audio track attached to AudioSource.");
     }
 
     private RTCConfiguration BuildRtcConfiguration()
@@ -371,6 +669,14 @@ public class WebRtcWebcamSender : MonoBehaviour
         else if (type == "candidate")
         {
             HandleRemoteIceCandidate(payload);
+        }
+        else if (type == "audience_mic_list_request")
+        {
+            SendAudienceMicrophoneDeviceList(from);
+        }
+        else if (type == "audience_mic_select")
+        {
+            HandleAudienceMicrophoneSelection(payload);
         }
     }
 
