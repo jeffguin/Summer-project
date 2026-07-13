@@ -84,8 +84,7 @@ public class WebRtcSignalHub : NetworkBehaviour
 
         DebugMessage(
             "GetOtherPlayer failed. No other player found. " +
-            "LocalPlayer = " + Runner.LocalPlayer +
-            ", ActivePlayersCount may be 1."
+            "LocalPlayer = " + Runner.LocalPlayer
         );
 
         return PlayerRef.None;
@@ -140,20 +139,79 @@ public class WebRtcSignalHub : NetworkBehaviour
             int length = Mathf.Min(maxChunkSize, payload.Length - start);
             string chunk = payload.Substring(start, length);
 
-            RPC_SendSignalChunk(
-                target,
-                Runner.LocalPlayer,
-                type,
-                signalId,
-                i,
-                totalChunks,
-                chunk
-            );
+            if (Runner.IsServer)
+            {
+                RPC_SendSignalChunkToClient(
+                    target,
+                    Runner.LocalPlayer,
+                    type,
+                    signalId,
+                    i,
+                    totalChunks,
+                    chunk
+                );
+            }
+            else
+            {
+                RPC_SendSignalChunkToHost(
+                    target,
+                    Runner.LocalPlayer,
+                    type,
+                    signalId,
+                    i,
+                    totalChunks,
+                    chunk
+                );
+            }
         }
     }
 
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_SendSignalChunk(
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_SendSignalChunkToClient(
+        PlayerRef target,
+        PlayerRef from,
+        string type,
+        int signalId,
+        int chunkIndex,
+        int totalChunks,
+        string chunk)
+    {
+        HandleIncomingChunk(
+            "HostToClient",
+            target,
+            from,
+            type,
+            signalId,
+            chunkIndex,
+            totalChunks,
+            chunk
+        );
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_SendSignalChunkToHost(
+        PlayerRef target,
+        PlayerRef from,
+        string type,
+        int signalId,
+        int chunkIndex,
+        int totalChunks,
+        string chunk)
+    {
+        HandleIncomingChunk(
+            "ClientToHost",
+            target,
+            from,
+            type,
+            signalId,
+            chunkIndex,
+            totalChunks,
+            chunk
+        );
+    }
+
+    private void HandleIncomingChunk(
+        string direction,
         PlayerRef target,
         PlayerRef from,
         string type,
@@ -164,15 +222,16 @@ public class WebRtcSignalHub : NetworkBehaviour
     {
         if (Runner == null)
         {
-            Debug.LogWarning("WebRtcSignalHub: RPC received but Runner is null. Type = " + type);
+            Debug.LogWarning("WebRtcSignalHub: Chunk received but Runner is null. Type = " + type);
             return;
         }
 
         if (debugRpcReceiveLog)
         {
             DebugMessage(
-                "RPC received. " +
-                "Type = " + type +
+                "Chunk received. " +
+                "Direction = " + direction +
+                ", Type = " + type +
                 ", SignalId = " + signalId +
                 ", Chunk = " + chunkIndex + "/" + totalChunks +
                 ", From = " + from +
@@ -188,8 +247,9 @@ public class WebRtcSignalHub : NetworkBehaviour
             if (debugRpcReceiveLog)
             {
                 DebugMessage(
-                    "RPC ignored because local player is not target. " +
-                    "Type = " + type +
+                    "Chunk ignored because local player is not target. " +
+                    "Direction = " + direction +
+                    ", Type = " + type +
                     ", Target = " + target +
                     ", LocalPlayer = " + Runner.LocalPlayer
                 );
@@ -201,7 +261,7 @@ public class WebRtcSignalHub : NetworkBehaviour
         if (string.IsNullOrEmpty(chunk))
         {
             Debug.LogWarning(
-                "WebRtcSignalHub: RPC chunk is empty. " +
+                "WebRtcSignalHub: Chunk is empty. " +
                 "Type = " + type +
                 ", SignalId = " + signalId
             );
@@ -209,7 +269,7 @@ public class WebRtcSignalHub : NetworkBehaviour
             return;
         }
 
-        string key = from.ToString() + "_" + signalId;
+        string key = from.ToString() + "_" + signalId + "_" + type;
 
         if (!chunkBuffers.TryGetValue(key, out SignalChunkBuffer buffer))
         {
@@ -256,15 +316,6 @@ public class WebRtcSignalHub : NetworkBehaviour
                 "Type = " + type +
                 ", SignalId = " + signalId +
                 ", Received = " + buffer.ReceivedCount + "/" + buffer.TotalChunks
-            );
-        }
-        else
-        {
-            DebugMessage(
-                "Duplicate chunk ignored. " +
-                "Type = " + type +
-                ", SignalId = " + signalId +
-                ", ChunkIndex = " + chunkIndex
             );
         }
 

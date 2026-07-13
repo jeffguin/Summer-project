@@ -19,6 +19,10 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     [Tooltip("Optional. If assigned, clicking this will refresh actor/audience microphone lists.")]
     [SerializeField] private Button refreshAudioDevicesButton;
 
+    [Header("Audio Control Buttons")]
+    [SerializeField] private Button startAudioButton;
+    [SerializeField] private Button stopAudioButton;
+
     [Header("Actor Audio Receiver")]
     [Tooltip("The WebRtcVideoReceiver on the Actor / Quest side. Used to set the Actor microphone device.")]
     [SerializeField] private WebRtcVideoReceiver actorReceiver;
@@ -79,6 +83,16 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         if (refreshAudioDevicesButton != null)
         {
             refreshAudioDevicesButton.onClick.AddListener(RefreshAudioDeviceLists);
+        }
+
+        if (startAudioButton != null)
+        {
+            startAudioButton.onClick.AddListener(OnStartAudioClicked);
+        }
+
+        if (stopAudioButton != null)
+        {
+            stopAudioButton.onClick.AddListener(OnStopAudioClicked);
         }
 
         SetWaitingState();
@@ -157,6 +171,16 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         if (refreshAudioDevicesButton != null)
         {
             refreshAudioDevicesButton.onClick.RemoveListener(RefreshAudioDeviceLists);
+        }
+
+        if (startAudioButton != null)
+        {
+            startAudioButton.onClick.RemoveListener(OnStartAudioClicked);
+        }
+
+        if (stopAudioButton != null)
+        {
+            stopAudioButton.onClick.RemoveListener(OnStopAudioClicked);
         }
 
         if (WebRtcSignalHub.Instance != null)
@@ -282,11 +306,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         if (controlHub == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start. NetworkWebcamControlHub is missing.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start video. NetworkWebcamControlHub is missing.");
             return;
         }
 
-        Debug.Log("Performer requested Start Audience Video. Camera index: " + selectedCameraIndex);
+        Debug.Log("PerformerWebcamControlPanel: Performer requested Start Audience Video. Camera index = " + selectedCameraIndex);
 
         controlHub.RequestStartAudienceVideo(selectedCameraIndex);
     }
@@ -297,13 +321,47 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         if (controlHub == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop. NetworkWebcamControlHub is missing.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop video. NetworkWebcamControlHub is missing.");
             return;
         }
 
-        Debug.Log("Performer requested Stop Audience Video.");
+        Debug.Log("PerformerWebcamControlPanel: Performer requested Stop Audience Video.");
 
         controlHub.RequestStopAudienceVideo();
+    }
+
+    // =========================
+    // Audio Control UI
+    // =========================
+
+    public void OnStartAudioClicked()
+    {
+        TryFindControlHub();
+
+        if (controlHub == null)
+        {
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start audio. NetworkWebcamControlHub is missing.");
+            return;
+        }
+
+        Debug.Log("PerformerWebcamControlPanel: Performer requested Start Audience Audio.");
+
+        controlHub.RequestStartAudienceAudio();
+    }
+
+    public void OnStopAudioClicked()
+    {
+        TryFindControlHub();
+
+        if (controlHub == null)
+        {
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop audio. NetworkWebcamControlHub is missing.");
+            return;
+        }
+
+        Debug.Log("PerformerWebcamControlPanel: Performer requested Stop Audience Audio.");
+
+        controlHub.RequestStopAudienceAudio();
     }
 
     // =========================
@@ -411,10 +469,12 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         while (retryCount < maxRetryCount)
         {
-            if (WebRtcSignalHub.Instance == null)
+            TryFindControlHub();
+
+            if (controlHub == null)
             {
                 Debug.LogWarning(
-                    "PerformerWebcamControlPanel: WebRtcSignalHub is missing. " +
+                    "PerformerWebcamControlPanel: NetworkWebcamControlHub is missing. " +
                     "Retry audience microphone list request."
                 );
 
@@ -423,32 +483,9 @@ public class PerformerWebcamControlPanel : MonoBehaviour
                 continue;
             }
 
-            if (!signalHubSubscribed)
-            {
-                SubscribeToSignalHub();
-            }
+            Debug.Log("PerformerWebcamControlPanel: Requesting audience microphone list through NetworkWebcamControlHub.");
 
-            PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
-
-            if (target == PlayerRef.None)
-            {
-                Debug.LogWarning(
-                    "PerformerWebcamControlPanel: No audience player found. " +
-                    "Retry audience microphone list request."
-                );
-
-                retryCount++;
-                yield return new WaitForSeconds(1f);
-                continue;
-            }
-
-            Debug.Log("PerformerWebcamControlPanel: Requesting audience microphone list from " + target);
-
-            WebRtcSignalHub.Instance.SendSignal(
-                target,
-                "audience_mic_list_request",
-                "{}"
-            );
+            controlHub.RequestAudienceMicrophoneList();
 
             requestAudienceMicListCoroutine = null;
             yield break;
@@ -591,38 +628,21 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         selectedAudienceMicIndex = index;
 
-        if (WebRtcSignalHub.Instance == null)
-        {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot send audience microphone selection. WebRtcSignalHub is missing.");
-            return;
-        }
+        TryFindControlHub();
 
-        PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
-
-        if (target == PlayerRef.None)
+        if (controlHub == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot send audience microphone selection. No audience player found.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot send audience microphone selection. NetworkWebcamControlHub is missing.");
             return;
         }
 
         string selectedDevice = audienceMicDevices[index];
 
-        MicrophoneDeviceSelectSignal signal = new MicrophoneDeviceSelectSignal
-        {
-            deviceName = selectedDevice
-        };
-
-        string json = JsonUtility.ToJson(signal);
-
         Debug.Log(
-            "PerformerWebcamControlPanel: Sending audience microphone selection: " +
+            "PerformerWebcamControlPanel: Sending audience microphone selection through NetworkWebcamControlHub: " +
             (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
         );
 
-        WebRtcSignalHub.Instance.SendSignal(
-            target,
-            "audience_mic_select",
-            json
-        );
+        controlHub.RequestSelectAudienceMicrophone(selectedDevice);
     }
 }
