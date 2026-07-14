@@ -60,7 +60,7 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
 
     private void Start()
     {
-        runner = FindObjectOfType<NetworkRunner>();
+        runner = FindFirstObjectByType<NetworkRunner>();
 
         if (handTransform == null)
         {
@@ -91,7 +91,7 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
     {
         if (runner == null)
         {
-            runner = FindObjectOfType<NetworkRunner>();
+            runner = FindFirstObjectByType<NetworkRunner>();
         }
 
         UpdateHover();

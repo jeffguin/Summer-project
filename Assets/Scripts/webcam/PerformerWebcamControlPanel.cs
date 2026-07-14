@@ -89,7 +89,8 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     {
         if (actorReceiver == null)
         {
-            actorReceiver = FindObjectOfType<WebRtcVideoReceiver>(true);
+            actorReceiver =
+                FindFirstObjectByType<WebRtcVideoReceiver>(FindObjectsInactive.Include);
 
             if (actorReceiver != null)
             {
@@ -199,7 +200,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         if (controlHub != null)
             return;
 
-        controlHub = FindObjectOfType<NetworkWebcamControlHub>();
+        controlHub = FindFirstObjectByType<NetworkWebcamControlHub>();
 
         if (controlHub == null)
         {

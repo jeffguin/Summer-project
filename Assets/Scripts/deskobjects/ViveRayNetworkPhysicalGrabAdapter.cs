@@ -52,7 +52,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
     private void Start()
     {
-        runner = FindObjectOfType<NetworkRunner>();
+        runner = FindFirstObjectByType<NetworkRunner>();
 
         if (rayOrigin == null)
         {
@@ -82,7 +82,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
     {
         if (runner == null)
         {
-            runner = FindObjectOfType<NetworkRunner>();
+            runner = FindFirstObjectByType<NetworkRunner>();
         }
 
         UpdateHover();

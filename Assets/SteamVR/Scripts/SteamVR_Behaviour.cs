@@ -53,11 +53,11 @@ namespace Valve.VR
                 if (forceUnityVRToOpenVR)
                     forcingInitialization = true;
 
-                SteamVR_Render renderInstance = GameObject.FindObjectOfType<SteamVR_Render>();
+                SteamVR_Render renderInstance = GameObject.FindFirstObjectByType<SteamVR_Render>();
                 if (renderInstance != null)
                     steamVRObject = renderInstance.gameObject;
 
-                SteamVR_Behaviour behaviourInstance = GameObject.FindObjectOfType<SteamVR_Behaviour>();
+                SteamVR_Behaviour behaviourInstance = GameObject.FindFirstObjectByType<SteamVR_Behaviour>();
                 if (behaviourInstance != null)
                     steamVRObject = behaviourInstance.gameObject;
 
@@ -102,6 +102,14 @@ namespace Valve.VR
 
         public void InitializeSteamVR(bool forceUnityVRToOpenVR = false)
         {
+#if OPENVR_XR_API
+            // XR Plugin Management owns OpenVR loader startup in this configuration.
+            // Re-running the removed legacy XRSettings device-loading path can interfere
+            // with the active loader, so initialize SteamVR against the running subsystem.
+            forcingInitialization = forceUnityVRToOpenVR;
+            SteamVR.Initialize(false);
+            forcingInitialization = false;
+#else
             if (forceUnityVRToOpenVR)
             {
                 forcingInitialization = true;
@@ -118,8 +126,10 @@ namespace Valve.VR
             {
                 SteamVR.Initialize(false);
             }
+#endif
         }
 
+#if !OPENVR_XR_API
         private Coroutine initializeCoroutine;
 
 #if UNITY_2018_3_OR_NEWER
@@ -164,6 +174,7 @@ namespace Valve.VR
             initializeCoroutine = null;
             forcingInitialization = false;
         }
+#endif
 
 #if UNITY_EDITOR
         //only stop playing if the unity editor is running

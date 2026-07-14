@@ -59,7 +59,7 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
 
     private void OnEnable()
     {
-        runner = FindObjectOfType<NetworkRunner>();
+        runner = FindFirstObjectByType<NetworkRunner>();
 
         if (grabbable != null)
         {
@@ -98,7 +98,7 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
     {
         if (runner == null)
         {
-            runner = FindObjectOfType<NetworkRunner>();
+            runner = FindFirstObjectByType<NetworkRunner>();
         }
 
         if (!isSelected)
@@ -156,7 +156,7 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
     {
         if (runner == null)
         {
-            runner = FindObjectOfType<NetworkRunner>();
+            runner = FindFirstObjectByType<NetworkRunner>();
         }
 
         if (runner == null)
@@ -290,7 +290,7 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
     {
         if (runner == null)
         {
-            runner = FindObjectOfType<NetworkRunner>();
+            runner = FindFirstObjectByType<NetworkRunner>();
         }
 
         if (networkGrabbable == null)

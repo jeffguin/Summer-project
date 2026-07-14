@@ -8,13 +8,6 @@ public class BowPassThrough : MonoBehaviour
 
     [SerializeField] HapticSource hapticSource;
 
-    bool Vibrate = false;
-
-    private void Update()
-    {
-
-    }
-
     private void OnTriggerEnter(Collider other)
     {
         if (other.tag == "Bow")
