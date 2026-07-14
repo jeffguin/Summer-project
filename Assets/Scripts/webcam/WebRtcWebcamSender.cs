@@ -752,14 +752,16 @@ public class WebRtcWebcamSender : MonoBehaviour
 
         Debug.Log("WebRtcWebcamSender: Starting microphone: " + activeMicrophoneDeviceName);
 
-        if (localMicrophoneAudioSource == null)
-        {
-            localMicrophoneAudioSource = gameObject.AddComponent<AudioSource>();
-        }
+        localMicrophoneAudioSource = GetOrCreateIsolatedAudioSource(
+            localMicrophoneAudioSource,
+            remoteAudioSource,
+            "Local Microphone Audio"
+        );
 
         localMicrophoneAudioSource.playOnAwake = false;
         localMicrophoneAudioSource.loop = true;
         localMicrophoneAudioSource.spatialBlend = 0f;
+        localMicrophoneAudioSource.volume = 1f;
 
         AudioClip micClip = Microphone.Start(
             activeMicrophoneDeviceName,
@@ -793,7 +795,11 @@ public class WebRtcWebcamSender : MonoBehaviour
         localMicrophoneAudioSource.clip = micClip;
         localMicrophoneAudioSource.Play();
 
-        localAudioTrack = new AudioStreamTrack(localMicrophoneAudioSource);
+        localAudioTrack = new AudioStreamTrack(localMicrophoneAudioSource)
+        {
+            // WebRTC captures this AudioSource without routing it back to the local speakers.
+            Loopback = false
+        };
         audioPeerConnection.AddTrack(localAudioTrack);
 
         Debug.Log("WebRtcWebcamSender: Local microphone audio track added to audio PeerConnection.");
@@ -809,10 +815,11 @@ public class WebRtcWebcamSender : MonoBehaviour
 
         remoteAudioTrack = audioTrack;
 
-        if (remoteAudioSource == null)
-        {
-            remoteAudioSource = gameObject.AddComponent<AudioSource>();
-        }
+        remoteAudioSource = GetOrCreateIsolatedAudioSource(
+            remoteAudioSource,
+            localMicrophoneAudioSource,
+            "Remote Audio Playback"
+        );
 
         remoteAudioSource.playOnAwake = false;
         remoteAudioSource.loop = true;
@@ -823,6 +830,25 @@ public class WebRtcWebcamSender : MonoBehaviour
         remoteAudioSource.Play();
 
         Debug.Log("WebRtcWebcamSender: Remote audio track attached to AudioSource.");
+    }
+
+    private AudioSource GetOrCreateIsolatedAudioSource(
+        AudioSource current,
+        AudioSource sourceThatMustRemainSeparate,
+        string childName)
+    {
+        if (current != null &&
+            (sourceThatMustRemainSeparate == null || current.gameObject != sourceThatMustRemainSeparate.gameObject))
+        {
+            return current;
+        }
+
+        GameObject audioObject = new GameObject(childName);
+        audioObject.transform.SetParent(transform, false);
+
+        AudioSource createdSource = audioObject.AddComponent<AudioSource>();
+        Debug.Log("WebRtcWebcamSender: Created isolated AudioSource: " + childName);
+        return createdSource;
     }
 
     // =========================================================
@@ -853,6 +879,14 @@ public class WebRtcWebcamSender : MonoBehaviour
         else if (type == "audio_candidate")
         {
             HandleAudioRemoteIceCandidate(payload);
+        }
+        else if (type == "audio_start_request")
+        {
+            StartAudioStream();
+        }
+        else if (type == "audio_stop_request")
+        {
+            StopAudioStream();
         }
         else if (type == "audience_mic_list_request")
         {

@@ -633,16 +633,16 @@ public class WebRtcVideoReceiver : MonoBehaviour
 
         Debug.Log("WebRtcVideoReceiver: Starting microphone: " + activeMicrophoneDeviceName);
 
-        if (localMicrophoneAudioSource == null)
-        {
-            localMicrophoneAudioSource = gameObject.AddComponent<AudioSource>();
-            Debug.Log("WebRtcVideoReceiver: Created localMicrophoneAudioSource.");
-        }
+        localMicrophoneAudioSource = GetOrCreateIsolatedAudioSource(
+            localMicrophoneAudioSource,
+            remoteAudioSource,
+            "Local Microphone Audio"
+        );
 
         localMicrophoneAudioSource.playOnAwake = false;
         localMicrophoneAudioSource.loop = true;
         localMicrophoneAudioSource.spatialBlend = 0f;
-        localMicrophoneAudioSource.volume = 0f; // 避免 Actor 本地听到自己麦克风回声
+        localMicrophoneAudioSource.volume = 1f;
 
         AudioClip micClip = Microphone.Start(
             activeMicrophoneDeviceName,
@@ -691,7 +691,11 @@ public class WebRtcVideoReceiver : MonoBehaviour
         Debug.Log("WebRtcVideoReceiver: localMicrophoneAudioSource.Play called. IsPlaying = " +
                   localMicrophoneAudioSource.isPlaying);
 
-        localAudioTrack = new AudioStreamTrack(localMicrophoneAudioSource);
+        localAudioTrack = new AudioStreamTrack(localMicrophoneAudioSource)
+        {
+            // Capture the microphone without playing it through the Quest speakers.
+            Loopback = false
+        };
         audioPeerConnection.AddTrack(localAudioTrack);
 
         Debug.Log("WebRtcVideoReceiver: Local microphone audio track added to audio PeerConnection.");
@@ -709,10 +713,11 @@ public class WebRtcVideoReceiver : MonoBehaviour
 
         remoteAudioTrack = audioTrack;
 
-        if (remoteAudioSource == null)
-        {
-            remoteAudioSource = gameObject.AddComponent<AudioSource>();
-        }
+        remoteAudioSource = GetOrCreateIsolatedAudioSource(
+            remoteAudioSource,
+            localMicrophoneAudioSource,
+            "Remote Audio Playback"
+        );
 
         remoteAudioSource.playOnAwake = false;
         remoteAudioSource.loop = true;
@@ -723,6 +728,25 @@ public class WebRtcVideoReceiver : MonoBehaviour
         remoteAudioSource.Play();
 
         Debug.Log("WebRtcVideoReceiver: Remote audio track attached to AudioSource.");
+    }
+
+    private AudioSource GetOrCreateIsolatedAudioSource(
+        AudioSource current,
+        AudioSource sourceThatMustRemainSeparate,
+        string childName)
+    {
+        if (current != null &&
+            (sourceThatMustRemainSeparate == null || current.gameObject != sourceThatMustRemainSeparate.gameObject))
+        {
+            return current;
+        }
+
+        GameObject audioObject = new GameObject(childName);
+        audioObject.transform.SetParent(transform, false);
+
+        AudioSource createdSource = audioObject.AddComponent<AudioSource>();
+        Debug.Log("WebRtcVideoReceiver: Created isolated AudioSource: " + childName);
+        return createdSource;
     }
 
     public void StopAudioReceiving()

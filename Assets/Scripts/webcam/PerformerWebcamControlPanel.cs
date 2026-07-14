@@ -5,6 +5,10 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
+
 public class PerformerWebcamControlPanel : MonoBehaviour
 {
     [Header("Video UI")]
@@ -35,7 +39,12 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     private NetworkWebcamControlHub controlHub;
 
     private Coroutine requestAudienceMicListCoroutine;
-    private bool signalHubSubscribed = false;
+    private Coroutine initializeActorMicListCoroutine;
+    private WebRtcSignalHub subscribedSignalHub;
+    private bool audienceMicListReceived = false;
+    private bool actorMicrophoneAvailable = false;
+    private bool audienceMicrophoneAvailable = false;
+    private bool audioStartRequested = false;
 
     private readonly List<string> actorMicDevices = new List<string>();
     private readonly List<string> audienceMicDevices = new List<string>();
@@ -115,15 +124,13 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             }
         }
 
-        RefreshActorMicrophoneList();
+        initializeActorMicListCoroutine = StartCoroutine(InitializeActorMicrophoneList());
         StartCoroutine(WaitForSignalHub());
     }
 
     private void OnEnable()
     {
         TryFindControlHub();
-
-        RefreshActorMicrophoneList();
 
         if (WebRtcSignalHub.Instance != null)
         {
@@ -139,6 +146,14 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             StopCoroutine(requestAudienceMicListCoroutine);
             requestAudienceMicListCoroutine = null;
         }
+
+        if (initializeActorMicListCoroutine != null)
+        {
+            StopCoroutine(initializeActorMicListCoroutine);
+            initializeActorMicListCoroutine = null;
+        }
+
+        UnsubscribeFromSignalHub();
     }
 
     private void OnDestroy()
@@ -183,12 +198,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             stopAudioButton.onClick.RemoveListener(OnStopAudioClicked);
         }
 
-        if (WebRtcSignalHub.Instance != null)
-        {
-            WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
-        }
-
-        signalHubSubscribed = false;
+        UnsubscribeFromSignalHub();
     }
 
     private System.Collections.IEnumerator WaitForSignalHub()
@@ -210,12 +220,24 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         if (WebRtcSignalHub.Instance == null)
             return;
 
-        WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
-        WebRtcSignalHub.Instance.OnSignalReceived += OnSignalReceived;
+        if (subscribedSignalHub == WebRtcSignalHub.Instance)
+            return;
 
-        signalHubSubscribed = true;
+        UnsubscribeFromSignalHub();
+
+        subscribedSignalHub = WebRtcSignalHub.Instance;
+        subscribedSignalHub.OnSignalReceived += OnSignalReceived;
 
         Debug.Log("PerformerWebcamControlPanel: Subscribed to WebRtcSignalHub.");
+    }
+
+    private void UnsubscribeFromSignalHub()
+    {
+        if (subscribedSignalHub == null)
+            return;
+
+        subscribedSignalHub.OnSignalReceived -= OnSignalReceived;
+        subscribedSignalHub = null;
     }
 
     private void TryFindControlHub()
@@ -336,32 +358,31 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     public void OnStartAudioClicked()
     {
-        TryFindControlHub();
-
-        if (controlHub == null)
+        if (!TrySendSignalToAudience("audio_start_request", "{}"))
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start audio. NetworkWebcamControlHub is missing.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start audio because the audience is not connected yet.");
+            RequestAudienceMicrophoneList();
             return;
         }
 
-        Debug.Log("PerformerWebcamControlPanel: Performer requested Start Audience Audio.");
+        audioStartRequested = true;
+        UpdateAudioButtonState();
 
-        controlHub.RequestStartAudienceAudio();
+        Debug.Log("PerformerWebcamControlPanel: Audio start request sent to Audience.");
     }
 
     public void OnStopAudioClicked()
     {
-        TryFindControlHub();
-
-        if (controlHub == null)
+        if (!TrySendSignalToAudience("audio_stop_request", "{}"))
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop audio. NetworkWebcamControlHub is missing.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop audio because the audience is not connected.");
             return;
         }
 
-        Debug.Log("PerformerWebcamControlPanel: Performer requested Stop Audience Audio.");
+        audioStartRequested = false;
+        UpdateAudioButtonState();
 
-        controlHub.RequestStopAudienceAudio();
+        Debug.Log("PerformerWebcamControlPanel: Audio stop request sent to Audience.");
     }
 
     // =========================
@@ -391,14 +412,67 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             audienceMicDropdown.RefreshShownValue();
             audienceMicDropdown.interactable = false;
         }
+
+        audienceMicListReceived = false;
+        actorMicrophoneAvailable = false;
+        audienceMicrophoneAvailable = false;
+        audioStartRequested = false;
+        UpdateAudioButtonState();
     }
 
     public void RefreshAudioDeviceLists()
     {
         Debug.Log("PerformerWebcamControlPanel: RefreshAudioDeviceLists clicked.");
 
-        RefreshActorMicrophoneList();
+        if (initializeActorMicListCoroutine != null)
+        {
+            StopCoroutine(initializeActorMicListCoroutine);
+        }
+
+        initializeActorMicListCoroutine = StartCoroutine(InitializeActorMicrophoneList());
+        audienceMicListReceived = false;
+        audienceMicrophoneAvailable = false;
+
+        if (audienceMicDropdown != null)
+        {
+            audienceMicDropdown.ClearOptions();
+            audienceMicDropdown.AddOptions(new List<string>
+            {
+                "Waiting for audience microphones..."
+            });
+            audienceMicDropdown.RefreshShownValue();
+        }
+
+        UpdateAudioButtonState();
         RequestAudienceMicrophoneList();
+    }
+
+    private System.Collections.IEnumerator InitializeActorMicrophoneList()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            Debug.Log("PerformerWebcamControlPanel: Requesting Actor microphone permission before listing devices.");
+            Permission.RequestUserPermission(Permission.Microphone);
+
+            float timeout = Time.realtimeSinceStartup + 30f;
+            while (!Permission.HasUserAuthorizedPermission(Permission.Microphone) &&
+                   Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+            {
+                Debug.LogError("PerformerWebcamControlPanel: Actor microphone permission was not granted.");
+            }
+        }
+#else
+        yield return null;
+#endif
+
+        RefreshActorMicrophoneList();
+        initializeActorMicListCoroutine = null;
     }
 
     private void RefreshActorMicrophoneList()
@@ -410,7 +484,9 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         string[] devices = Microphone.devices;
 
-        if (devices != null && devices.Length > 0)
+        actorMicrophoneAvailable = devices != null && devices.Length > 0;
+
+        if (actorMicrophoneAvailable)
         {
             actorMicDevices.AddRange(devices);
         }
@@ -439,14 +515,31 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             }
         }
 
+        if (!actorMicrophoneAvailable)
+        {
+            options[0] = "No actor microphone found";
+        }
+
         actorMicDropdown.AddOptions(options);
 
-        selectedActorMicIndex = 0;
-        actorMicDropdown.value = 0;
-        actorMicDropdown.RefreshShownValue();
-        actorMicDropdown.interactable = true;
+        string currentDevice = actorReceiver != null
+            ? actorReceiver.GetMicrophoneDeviceName()
+            : "";
 
-        ApplyActorMicrophoneSelection(0);
+        selectedActorMicIndex = actorMicDevices.IndexOf(currentDevice);
+        if (selectedActorMicIndex < 0)
+            selectedActorMicIndex = 0;
+
+        actorMicDropdown.SetValueWithoutNotify(selectedActorMicIndex);
+        actorMicDropdown.RefreshShownValue();
+        actorMicDropdown.interactable = actorMicrophoneAvailable && !audioStartRequested;
+
+        if (actorMicrophoneAvailable)
+        {
+            ApplyActorMicrophoneSelection(selectedActorMicIndex);
+        }
+
+        UpdateAudioButtonState();
 
         Debug.Log("PerformerWebcamControlPanel: Actor microphone list refreshed. Count = " + actorMicDevices.Count);
     }
@@ -464,34 +557,32 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     private System.Collections.IEnumerator RequestAudienceMicrophoneListRoutine()
     {
+        audienceMicListReceived = false;
         int retryCount = 0;
-        int maxRetryCount = 30;
 
-        while (retryCount < maxRetryCount)
+        while (!audienceMicListReceived)
         {
-            TryFindControlHub();
-
-            if (controlHub == null)
+            if (WebRtcSignalHub.Instance == null)
             {
                 Debug.LogWarning(
-                    "PerformerWebcamControlPanel: NetworkWebcamControlHub is missing. " +
+                    "PerformerWebcamControlPanel: WebRtcSignalHub is not ready. " +
                     "Retry audience microphone list request."
                 );
+            }
+            else
+            {
+                SubscribeToSignalHub();
 
-                retryCount++;
-                yield return new WaitForSeconds(1f);
-                continue;
+                if (TrySendSignalToAudience("audience_mic_list_request", "{}") &&
+                    (retryCount == 0 || retryCount % 5 == 0))
+                {
+                    Debug.Log("PerformerWebcamControlPanel: Audience microphone list request sent. Attempt " + (retryCount + 1));
+                }
             }
 
-            Debug.Log("PerformerWebcamControlPanel: Requesting audience microphone list through NetworkWebcamControlHub.");
-
-            controlHub.RequestAudienceMicrophoneList();
-
-            requestAudienceMicListCoroutine = null;
-            yield break;
+            retryCount++;
+            yield return new WaitForSecondsRealtime(1f);
         }
-
-        Debug.LogWarning("PerformerWebcamControlPanel: Failed to request audience microphone list after retries.");
 
         requestAudienceMicListCoroutine = null;
     }
@@ -533,16 +624,21 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         );
 
         SetAudienceMicrophoneList(signal.devices, signal.selectedDevice);
+        audienceMicListReceived = true;
+        UpdateAudioButtonState();
     }
 
     public void SetAudienceMicrophoneList(string[] devices, string selectedDevice)
     {
+        audienceMicListReceived = true;
         audienceMicDevices.Clear();
 
         // Empty string means default microphone.
         audienceMicDevices.Add("");
 
-        if (devices != null && devices.Length > 0)
+        audienceMicrophoneAvailable = devices != null && devices.Length > 0;
+
+        if (audienceMicrophoneAvailable)
         {
             audienceMicDevices.AddRange(devices);
         }
@@ -571,6 +667,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             }
         }
 
+        if (!audienceMicrophoneAvailable)
+        {
+            options[0] = "No audience microphone found";
+        }
+
         audienceMicDropdown.AddOptions(options);
 
         int selectedIndex = 0;
@@ -585,9 +686,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         }
 
         selectedAudienceMicIndex = selectedIndex;
-        audienceMicDropdown.value = selectedIndex;
+        audienceMicDropdown.SetValueWithoutNotify(selectedIndex);
         audienceMicDropdown.RefreshShownValue();
-        audienceMicDropdown.interactable = true;
+        audienceMicDropdown.interactable = audienceMicrophoneAvailable && !audioStartRequested;
+
+        UpdateAudioButtonState();
 
         Debug.Log("PerformerWebcamControlPanel: Audience microphone list updated. Count = " + audienceMicDevices.Count);
     }
@@ -628,21 +731,62 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         selectedAudienceMicIndex = index;
 
-        TryFindControlHub();
-
-        if (controlHub == null)
-        {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot send audience microphone selection. NetworkWebcamControlHub is missing.");
-            return;
-        }
-
         string selectedDevice = audienceMicDevices[index];
 
+        MicrophoneDeviceSelectSignal signal = new MicrophoneDeviceSelectSignal
+        {
+            deviceName = selectedDevice
+        };
+
         Debug.Log(
-            "PerformerWebcamControlPanel: Sending audience microphone selection through NetworkWebcamControlHub: " +
+            "PerformerWebcamControlPanel: Sending audience microphone selection: " +
             (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
         );
 
-        controlHub.RequestSelectAudienceMicrophone(selectedDevice);
+        if (!TrySendSignalToAudience("audience_mic_select", JsonUtility.ToJson(signal)))
+        {
+            Debug.LogWarning("PerformerWebcamControlPanel: Audience microphone selection was not sent because the audience is not connected.");
+        }
+    }
+
+    private bool TrySendSignalToAudience(string type, string payload)
+    {
+        if (WebRtcSignalHub.Instance == null)
+            return false;
+
+        PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
+        if (target == PlayerRef.None)
+            return false;
+
+        WebRtcSignalHub.Instance.SendSignal(target, type, payload);
+        return true;
+    }
+
+    private void UpdateAudioButtonState()
+    {
+        bool canStartAudio =
+            audienceMicListReceived &&
+            actorMicrophoneAvailable &&
+            audienceMicrophoneAvailable;
+
+        if (startAudioButton != null)
+        {
+            startAudioButton.interactable = canStartAudio && !audioStartRequested;
+        }
+
+        if (stopAudioButton != null)
+        {
+            stopAudioButton.interactable = audioStartRequested;
+        }
+
+        if (actorMicDropdown != null)
+        {
+            actorMicDropdown.interactable = actorMicrophoneAvailable && !audioStartRequested;
+        }
+
+        if (audienceMicDropdown != null)
+        {
+            audienceMicDropdown.interactable = audienceMicrophoneAvailable && !audioStartRequested;
+        }
     }
 }

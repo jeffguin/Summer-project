@@ -14,5 +14,6 @@
     <meta-data android:name="com.oculus.telemetry.project_guid" android:value="6583830d-32ab-4424-add5-8294ee54cac2" />
     <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s" tools:replace="android:value" />
   </application>
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="true" />
 </manifest>
