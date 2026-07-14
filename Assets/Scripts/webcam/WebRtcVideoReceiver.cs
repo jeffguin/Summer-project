@@ -46,6 +46,7 @@ public class WebRtcVideoReceiver : MonoBehaviour
     private RTCPeerConnection audioPeerConnection;
 
     private Coroutine webRtcUpdateCoroutine;
+    private Coroutine audioStatsRoutine;
 
     private AudioStreamTrack localAudioTrack;
     private VideoStreamTrack remoteVideoTrack;
@@ -462,14 +463,83 @@ public class WebRtcVideoReceiver : MonoBehaviour
             Debug.Log("WebRtcVideoReceiver: Audio connection state: " + state);
         };
 
+        audioStatsRoutine = StartCoroutine(LogAudioStatsRoutine());
+
         Debug.Log("WebRtcVideoReceiver: Audio PeerConnection created.");
+    }
+
+    private IEnumerator LogAudioStatsRoutine()
+    {
+        WaitForSecondsRealtime interval = new WaitForSecondsRealtime(3f);
+
+        while (audioPeerConnection != null)
+        {
+            yield return interval;
+
+            RTCPeerConnection connection = audioPeerConnection;
+            if (connection == null)
+                break;
+
+            RTCStatsReportAsyncOperation statsOperation = connection.GetStats();
+            yield return statsOperation;
+
+            if (statsOperation.IsError)
+            {
+                Debug.LogWarning("WebRtcVideoReceiver: Quest audio GetStats failed: " + statsOperation.Error.errorType);
+                continue;
+            }
+
+            ulong outboundPackets = 0;
+            uint inboundPackets = 0;
+            double inboundAudioEnergy = 0d;
+
+            RTCStatsReport report = statsOperation.Value;
+
+            foreach (RTCStats stats in report.Stats.Values)
+            {
+                RTCOutboundRTPStreamStats outbound = stats as RTCOutboundRTPStreamStats;
+                if (outbound != null && outbound.kind == "audio")
+                {
+                    outboundPackets += outbound.packetsSent;
+                }
+
+                RTCInboundRTPStreamStats inbound = stats as RTCInboundRTPStreamStats;
+                if (inbound != null && inbound.kind == "audio")
+                {
+                    inboundPackets += inbound.packetsReceived;
+                    inboundAudioEnergy += inbound.totalAudioEnergy;
+                }
+            }
+
+            report.Dispose();
+
+            Debug.Log(
+                "AUDIO_DIAGNOSTICS [Actor Quest] " +
+                "OutboundPackets=" + outboundPackets +
+                ", InboundPackets=" + inboundPackets +
+                ", InboundAudioEnergy=" + inboundAudioEnergy.ToString("F6") +
+                ", PlaybackSourceExists=" + (remoteAudioSource != null) +
+                ", PlaybackIsPlaying=" + (remoteAudioSource != null && remoteAudioSource.isPlaying)
+            );
+        }
+
+        audioStatsRoutine = null;
     }
 
     private IEnumerator HandleAudioOffer(PlayerRef from, string payload)
     {
         Debug.Log("WebRtcVideoReceiver: Handling audio offer...");
 
-        CleanupAudioConnection();
+        int candidatesReceivedBeforeOffer = pendingAudioCandidates.Count;
+
+        // ICE candidates can arrive before the chunked SDP offer. Keep those candidates while
+        // replacing the previous audio connection, otherwise audio loses every usable route.
+        CleanupAudioConnection(false);
+
+        Debug.Log(
+            "WebRtcVideoReceiver: Preserved audio ICE candidates received before offer. Count = " +
+            candidatesReceivedBeforeOffer
+        );
 
         CreateAudioPeerConnection();
 
@@ -723,11 +793,49 @@ public class WebRtcVideoReceiver : MonoBehaviour
         remoteAudioSource.loop = true;
         remoteAudioSource.spatialBlend = 0f;
         remoteAudioSource.volume = 1f;
+        remoteAudioSource.mute = false;
+        remoteAudioSource.ignoreListenerPause = true;
+
+        EnsureAudioListenerForPlayback(remoteAudioSource, "Actor Quest");
 
         remoteAudioSource.SetTrack(remoteAudioTrack);
         remoteAudioSource.Play();
 
-        Debug.Log("WebRtcVideoReceiver: Remote audio track attached to AudioSource.");
+        Debug.Log(
+            "WebRtcVideoReceiver: Remote PC audio track attached to Quest AudioSource. " +
+            "Source = " + remoteAudioSource.gameObject.name +
+            ", IsPlaying = " + remoteAudioSource.isPlaying
+        );
+    }
+
+    private void EnsureAudioListenerForPlayback(AudioSource playbackSource, string endpointName)
+    {
+        AudioListener listener = FindObjectOfType<AudioListener>();
+
+        if (listener == null)
+        {
+            listener = playbackSource.gameObject.AddComponent<AudioListener>();
+            Debug.LogWarning(
+                "WebRtcVideoReceiver: No active AudioListener existed on " + endpointName +
+                ". Created a fallback listener on the remote audio object."
+            );
+        }
+
+        if (AudioListener.pause)
+        {
+            Debug.LogWarning("WebRtcVideoReceiver: AudioListener was paused. Remote call audio ignores listener pause.");
+        }
+
+        if (AudioListener.volume <= 0f)
+        {
+            AudioListener.volume = 1f;
+            Debug.LogWarning("WebRtcVideoReceiver: AudioListener global volume was zero and has been restored to 1.");
+        }
+
+        Debug.Log(
+            "WebRtcVideoReceiver: Quest playback listener ready. Listener = " + listener.gameObject.name +
+            ", GlobalVolume = " + AudioListener.volume
+        );
     }
 
     private AudioSource GetOrCreateIsolatedAudioSource(
@@ -755,10 +863,14 @@ public class WebRtcVideoReceiver : MonoBehaviour
         CleanupAudioConnection();
     }
 
-    private void CleanupAudioConnection()
+    private void CleanupAudioConnection(bool clearPendingCandidates = true)
     {
         audioRemoteDescriptionSet = false;
-        pendingAudioCandidates.Clear();
+
+        if (clearPendingCandidates)
+        {
+            pendingAudioCandidates.Clear();
+        }
 
         if (localAudioTrack != null)
         {
@@ -791,6 +903,12 @@ public class WebRtcVideoReceiver : MonoBehaviour
         {
             remoteAudioSource.Stop();
             remoteAudioSource.clip = null;
+        }
+
+        if (audioStatsRoutine != null)
+        {
+            StopCoroutine(audioStatsRoutine);
+            audioStatsRoutine = null;
         }
 
         if (audioPeerConnection != null)

@@ -5,11 +5,13 @@ using UnityEngine;
 public class NetworkWebcamControlHub : NetworkBehaviour
 {
     private AudienceWebcamRuntime audienceRuntime;
+    private WebRtcWebcamSender audienceAudioSender;
     private PerformerWebcamControlPanel performerPanel;
 
     public override void Spawned()
     {
         audienceRuntime = FindObjectOfType<AudienceWebcamRuntime>(true);
+        audienceAudioSender = FindObjectOfType<WebRtcWebcamSender>(true);
         performerPanel = FindObjectOfType<PerformerWebcamControlPanel>(true);
 
         Debug.Log("NetworkWebcamControlHub spawned. LocalPlayer: " + Runner.LocalPlayer);
@@ -18,6 +20,12 @@ public class NetworkWebcamControlHub : NetworkBehaviour
         {
             Debug.Log("NetworkWebcamControlHub: Audience runtime found. Reporting camera list soon.");
             Invoke(nameof(ReportLocalAudienceCameraList), 1.0f);
+        }
+
+        if (audienceAudioSender != null)
+        {
+            Debug.Log("NetworkWebcamControlHub: Audience audio sender found. Reporting PC microphone list soon.");
+            Invoke(nameof(ReportLocalAudienceMicrophoneList), 1.0f);
         }
 
         if (performerPanel != null)
@@ -123,16 +131,25 @@ public class NetworkWebcamControlHub : NetworkBehaviour
     [Rpc(RpcSources.All, RpcTargets.All)]
     private void RPC_RequestAudienceMicrophoneList()
     {
-        WebRtcWebcamSender sender = FindObjectOfType<WebRtcWebcamSender>(true);
+        ReportLocalAudienceMicrophoneList();
+    }
 
-        if (sender == null)
+    private void ReportLocalAudienceMicrophoneList()
+    {
+        if (audienceAudioSender == null)
+        {
+            audienceAudioSender = FindObjectOfType<WebRtcWebcamSender>(true);
+        }
+
+        if (audienceAudioSender == null)
         {
             Debug.Log("NetworkWebcamControlHub: This client has no WebRtcWebcamSender. Ignore microphone list request.");
             return;
         }
 
-        string[] devices = sender.GetLocalMicrophoneDevices();
-        string selectedDevice = sender.GetMicrophoneDeviceName();
+        string[] devices = audienceAudioSender.GetLocalMicrophoneDevices();
+        string selectedDevice = audienceAudioSender.GetMicrophoneDeviceName();
+        string endpointLabel = SystemInfo.deviceName + " / " + Application.platform;
 
         string joinedDevices = "";
 
@@ -147,11 +164,14 @@ public class NetworkWebcamControlHub : NetworkBehaviour
             ", Selected = " + (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
         );
 
-        RPC_ReportAudienceMicrophoneList(joinedDevices, selectedDevice);
+        RPC_ReportAudienceMicrophoneList(joinedDevices, selectedDevice, endpointLabel);
     }
 
     [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_ReportAudienceMicrophoneList(string joinedDevices, string selectedDevice)
+    private void RPC_ReportAudienceMicrophoneList(
+        string joinedDevices,
+        string selectedDevice,
+        string endpointLabel)
     {
         string[] devices;
 
@@ -166,8 +186,11 @@ public class NetworkWebcamControlHub : NetworkBehaviour
 
         if (panel != null)
         {
-            panel.SetAudienceMicrophoneList(devices, selectedDevice);
-            Debug.Log("NetworkWebcamControlHub: Performer audience microphone dropdown updated.");
+            panel.SetAudienceMicrophoneList(devices, selectedDevice, endpointLabel);
+            Debug.Log(
+                "NetworkWebcamControlHub: Performer audience microphone dropdown updated from remote PC: " +
+                endpointLabel
+            );
         }
     }
 
