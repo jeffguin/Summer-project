@@ -30597,6 +30597,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1187025723}
   - component: {fileID: 1187025722}
+  - component: {fileID: 1187025724}
   m_Layer: 0
   m_Name: AudienceWebRtcSender
   m_TagString: Untagged
@@ -30618,12 +30619,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   localWebcamManager: {fileID: 1997495372}
   startStreamButton: {fileID: 0}
-  enableMicrophone: 1
-  microphoneDeviceName: 
-  microphoneSampleRate: 48000
-  microphoneClipLengthSeconds: 1
-  localMicrophoneAudioSource: {fileID: 0}
-  remoteAudioSource: {fileID: 0}
   useGoogleStun: 1
   useTurn: 1
   turnUrlUdp: turn:global.relay.metered.ca:80
@@ -30645,6 +30640,29 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1187025724
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1187025721}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64d38cca826e4bcda2f4136c20b0807d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  role: 1
+  captureService: {fileID: 0}
+  remotePlaybackAudioSource: {fileID: 0}
+  useStun: 1
+  stunUrl: stun:stun.relay.metered.ca:80
+  useTurn: 1
+  turnUrlUdp: turn:global.relay.metered.ca:80
+  turnUrlTcp: turn:global.relay.metered.ca:80?transport=tcp
+  turnUsername: b7fea3a8499e5a5c3fe1d563
+  turnCredential: TZOX+7a9nbjiue/j
+  connectionTimeoutSeconds: 20
 --- !u!43 &1208828242
 Mesh:
   m_ObjectHideFlags: 0
@@ -31949,6 +31967,10 @@ PrefabInstance:
     - target: {fileID: 2112572756811432570, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: target
       value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 4553447050393225461, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5560740686354218937, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_TargetDisplay

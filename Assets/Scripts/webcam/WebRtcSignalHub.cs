@@ -12,6 +12,7 @@ public class WebRtcSignalHub : NetworkBehaviour
 
     [Header("Chunk Settings")]
     [SerializeField] private int maxChunkSize = 250;
+    [SerializeField] private float incompleteSignalTimeoutSeconds = 30f;
 
     [Header("Debug")]
     [SerializeField] private bool debugLog = true;
@@ -29,6 +30,34 @@ public class WebRtcSignalHub : NetworkBehaviour
         public int TotalChunks;
         public string[] Chunks;
         public int ReceivedCount;
+        public float LastUpdatedTime;
+    }
+
+    private void Update()
+    {
+        if (chunkBuffers.Count == 0)
+            return;
+
+        float now = Time.realtimeSinceStartup;
+        List<string> expiredKeys = null;
+
+        foreach (KeyValuePair<string, SignalChunkBuffer> entry in chunkBuffers)
+        {
+            if (now - entry.Value.LastUpdatedTime <= incompleteSignalTimeoutSeconds)
+                continue;
+
+            expiredKeys ??= new List<string>();
+            expiredKeys.Add(entry.Key);
+        }
+
+        if (expiredKeys == null)
+            return;
+
+        foreach (string key in expiredKeys)
+        {
+            Debug.LogWarning("WebRtcSignalHub: Discarding timed-out incomplete signal " + key);
+            chunkBuffers.Remove(key);
+        }
     }
 
     private void Awake()
@@ -209,7 +238,16 @@ public class WebRtcSignalHub : NetworkBehaviour
             return;
         }
 
-        string key = from.ToString() + "_" + signalId;
+        if (totalChunks <= 0 || totalChunks > 4096)
+        {
+            Debug.LogWarning(
+                "WebRtcSignalHub: Invalid total chunk count. Type = " + type +
+                ", TotalChunks = " + totalChunks
+            );
+            return;
+        }
+
+        string key = from + "_" + type + "_" + signalId;
 
         if (!chunkBuffers.TryGetValue(key, out SignalChunkBuffer buffer))
         {
@@ -219,7 +257,8 @@ public class WebRtcSignalHub : NetworkBehaviour
                 Type = type,
                 TotalChunks = totalChunks,
                 Chunks = new string[totalChunks],
-                ReceivedCount = 0
+                ReceivedCount = 0,
+                LastUpdatedTime = Time.realtimeSinceStartup
             };
 
             chunkBuffers[key] = buffer;
@@ -250,6 +289,7 @@ public class WebRtcSignalHub : NetworkBehaviour
         {
             buffer.Chunks[chunkIndex] = chunk;
             buffer.ReceivedCount++;
+            buffer.LastUpdatedTime = Time.realtimeSinceStartup;
 
             DebugMessage(
                 "Chunk stored. " +

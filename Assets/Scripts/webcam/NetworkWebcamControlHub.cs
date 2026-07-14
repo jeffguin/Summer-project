@@ -6,11 +6,13 @@ public class NetworkWebcamControlHub : NetworkBehaviour
 {
     private AudienceWebcamRuntime audienceRuntime;
     private PerformerWebcamControlPanel performerPanel;
+    private WebRtcAudioEndpoint actorAudioEndpoint;
 
     public override void Spawned()
     {
-        audienceRuntime = FindObjectOfType<AudienceWebcamRuntime>(true);
-        performerPanel = FindObjectOfType<PerformerWebcamControlPanel>(true);
+        audienceRuntime = FindFirstObjectByType<AudienceWebcamRuntime>(FindObjectsInactive.Include);
+        performerPanel = FindFirstObjectByType<PerformerWebcamControlPanel>(FindObjectsInactive.Include);
+        actorAudioEndpoint = FindActorAudioEndpoint();
 
         Debug.Log("NetworkWebcamControlHub spawned. LocalPlayer: " + Runner.LocalPlayer);
 
@@ -23,6 +25,11 @@ public class NetworkWebcamControlHub : NetworkBehaviour
         if (performerPanel != null)
         {
             Debug.Log("NetworkWebcamControlHub: Performer panel found.");
+        }
+
+        if (actorAudioEndpoint != null)
+        {
+            Debug.Log("NetworkWebcamControlHub: Actor audio endpoint found.");
         }
     }
 
@@ -109,156 +116,65 @@ public class NetworkWebcamControlHub : NetworkBehaviour
         runtime.StopAudienceVideo();
     }
 
-    // =========================
-    // Audience Microphone Device List
-    // =========================
-
+    // Audio control remains a small Fusion-backed control plane. The actual
+    // SDP/ICE exchange and media are owned by WebRtcAudioEndpoint.
     public void RequestAudienceMicrophoneList()
     {
-        Debug.Log("NetworkWebcamControlHub: RequestAudienceMicrophoneList");
-        RPC_RequestAudienceMicrophoneList();
-    }
-
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_RequestAudienceMicrophoneList()
-    {
-        ReportLocalAudienceMicrophoneList();
-    }
-
-    private void ReportLocalAudienceMicrophoneList()
-    {
-        if (audienceAudioSender == null)
-        {
-            audienceAudioSender = FindObjectOfType<WebRtcWebcamSender>(true);
-        }
-
-        if (audienceAudioSender == null)
-        {
-            Debug.Log("NetworkWebcamControlHub: This client has no WebRtcWebcamSender. Ignore microphone list request.");
-            return;
-        }
-
-        string[] devices = audienceAudioSender.GetLocalMicrophoneDevices();
-        string selectedDevice = audienceAudioSender.GetMicrophoneDeviceName();
-        string endpointLabel = SystemInfo.deviceName + " / " + Application.platform;
-
-        string joinedDevices = "";
-
-        if (devices != null && devices.Length > 0)
-        {
-            joinedDevices = string.Join("\n", devices);
-        }
-
-        Debug.Log(
-            "NetworkWebcamControlHub: Audience reporting microphone list. " +
-            "Count = " + (devices != null ? devices.Length : 0) +
-            ", Selected = " + (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
-        );
-
-        RPC_ReportAudienceMicrophoneList(joinedDevices, selectedDevice, endpointLabel);
-    }
-
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_ReportAudienceMicrophoneList(
-        string joinedDevices,
-        string selectedDevice,
-        string endpointLabel)
-    {
-        string[] devices;
-
-        if (string.IsNullOrEmpty(joinedDevices))
-            devices = Array.Empty<string>();
-        else
-            devices = joinedDevices.Split('\n');
-
-        Debug.Log("NetworkWebcamControlHub: Received audience microphone list. Count: " + devices.Length);
-
-        PerformerWebcamControlPanel panel = FindObjectOfType<PerformerWebcamControlPanel>(true);
-
-        if (panel != null)
-        {
-            panel.SetAudienceMicrophoneList(devices, selectedDevice, endpointLabel);
-            Debug.Log(
-                "NetworkWebcamControlHub: Performer audience microphone dropdown updated from remote PC: " +
-                endpointLabel
-            );
-        }
+        WebRtcAudioEndpoint endpoint = GetActorAudioEndpoint();
+        if (endpoint == null || !endpoint.RequestAudienceMicrophoneList())
+            Debug.LogWarning("NetworkWebcamControlHub: Could not request the Audience microphone list.");
     }
 
     public void RequestSelectAudienceMicrophone(string deviceName)
     {
-        Debug.Log(
-            "NetworkWebcamControlHub: RequestSelectAudienceMicrophone " +
-            (string.IsNullOrEmpty(deviceName) ? "Default" : deviceName)
-        );
-
-        RPC_SelectAudienceMicrophone(deviceName);
+        WebRtcAudioEndpoint endpoint = GetActorAudioEndpoint();
+        if (endpoint == null || !endpoint.SelectAudienceMicrophone(deviceName))
+            Debug.LogWarning("NetworkWebcamControlHub: Could not select the Audience microphone.");
     }
-
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_SelectAudienceMicrophone(string deviceName)
-    {
-        WebRtcWebcamSender sender = FindObjectOfType<WebRtcWebcamSender>(true);
-
-        if (sender == null)
-        {
-            Debug.Log("NetworkWebcamControlHub: This client has no WebRtcWebcamSender. Ignore microphone selection.");
-            return;
-        }
-
-        Debug.Log(
-            "NetworkWebcamControlHub: Audience microphone selected: " +
-            (string.IsNullOrEmpty(deviceName) ? "Default" : deviceName)
-        );
-
-        sender.SetMicrophoneDeviceName(deviceName);
-    }
-
-    // =========================
-    // Audio Control
-    // =========================
 
     public void RequestStartAudienceAudio()
     {
-        Debug.Log("NetworkWebcamControlHub: RequestStartAudienceAudio");
-        RPC_StartAudienceAudio();
+        WebRtcAudioEndpoint endpoint = GetActorAudioEndpoint();
+        if (endpoint == null)
+        {
+            Debug.LogWarning("NetworkWebcamControlHub: Actor audio endpoint is missing.");
+            return;
+        }
+
+        endpoint.StartAudioSession();
     }
 
     public void RequestStopAudienceAudio()
     {
-        Debug.Log("NetworkWebcamControlHub: RequestStopAudienceAudio");
-        RPC_StopAudienceAudio();
-    }
-
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_StartAudienceAudio()
-    {
-        WebRtcWebcamSender sender = FindObjectOfType<WebRtcWebcamSender>(true);
-
-        if (sender == null)
+        WebRtcAudioEndpoint endpoint = GetActorAudioEndpoint();
+        if (endpoint == null)
         {
-            Debug.Log("NetworkWebcamControlHub: This client has no WebRtcWebcamSender. Ignore audio start command.");
+            Debug.LogWarning("NetworkWebcamControlHub: Actor audio endpoint is missing.");
             return;
         }
 
-        Debug.Log("NetworkWebcamControlHub: Audience starts audio.");
-
-        sender.SendMessage("StartAudioStream", SendMessageOptions.DontRequireReceiver);
+        endpoint.StopAudioSession();
     }
 
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_StopAudienceAudio()
+    public WebRtcAudioEndpoint GetActorAudioEndpoint()
     {
-        WebRtcWebcamSender sender = FindObjectOfType<WebRtcWebcamSender>(true);
+        if (actorAudioEndpoint == null)
+            actorAudioEndpoint = FindActorAudioEndpoint();
 
-        if (sender == null)
+        return actorAudioEndpoint;
+    }
+
+    private static WebRtcAudioEndpoint FindActorAudioEndpoint()
+    {
+        WebRtcAudioEndpoint[] endpoints =
+            FindObjectsByType<WebRtcAudioEndpoint>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        foreach (WebRtcAudioEndpoint endpoint in endpoints)
         {
-            Debug.Log("NetworkWebcamControlHub: This client has no WebRtcWebcamSender. Ignore audio stop command.");
-            return;
+            if (endpoint.Role == WebRtcAudioEndpoint.EndpointRole.Actor)
+                return endpoint;
         }
 
-        Debug.Log("NetworkWebcamControlHub: Audience stops audio.");
-
-        sender.SendMessage("StopAudioStream", SendMessageOptions.DontRequireReceiver);
+        return null;
     }
 }

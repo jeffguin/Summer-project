@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using Fusion;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -18,10 +16,12 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     [Tooltip("Optional. If assigned, clicking this will refresh actor/audience microphone lists.")]
     [SerializeField] private Button refreshAudioDevicesButton;
+    [SerializeField] private Button startAudioButton;
+    [SerializeField] private Button stopAudioButton;
+    [SerializeField] private TMP_Text audioStatusText;
 
-    [Header("Actor Audio Receiver")]
-    [Tooltip("The WebRtcVideoReceiver on the Actor / Quest side. Used to set the Actor microphone device.")]
-    [SerializeField] private WebRtcVideoReceiver actorReceiver;
+    [Header("Actor Audio Endpoint")]
+    [SerializeField] private WebRtcAudioEndpoint actorAudioEndpoint;
 
     [Header("Runtime State")]
     [SerializeField] private int selectedCameraIndex = 0;
@@ -31,26 +31,13 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     private NetworkWebcamControlHub controlHub;
 
     private Coroutine requestAudienceMicListCoroutine;
-    private bool signalHubSubscribed = false;
-
     private readonly List<string> actorMicDevices = new List<string>();
     private readonly List<string> audienceMicDevices = new List<string>();
 
-    [Serializable]
-    private class MicrophoneDeviceListSignal
-    {
-        public string[] devices;
-        public string selectedDevice;
-    }
-
-    [Serializable]
-    private class MicrophoneDeviceSelectSignal
-    {
-        public string deviceName;
-    }
-
     private void Awake()
     {
+        CreateRuntimeAudioControlsIfNeeded();
+
         if (cameraDropdown != null)
         {
             cameraDropdown.onValueChanged.AddListener(OnCameraSelected);
@@ -81,42 +68,35 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             refreshAudioDevicesButton.onClick.AddListener(RefreshAudioDeviceLists);
         }
 
+        if (startAudioButton != null)
+        {
+            startAudioButton.onClick.AddListener(OnStartAudioClicked);
+        }
+
+        if (stopAudioButton != null)
+        {
+            stopAudioButton.onClick.AddListener(OnStopAudioClicked);
+        }
+
         SetWaitingState();
         SetAudioWaitingState();
     }
 
     private void Start()
     {
-        if (actorReceiver == null)
-        {
-            actorReceiver =
-                FindFirstObjectByType<WebRtcVideoReceiver>(FindObjectsInactive.Include);
-
-            if (actorReceiver != null)
-            {
-                Debug.Log("PerformerWebcamControlPanel: Auto-found WebRtcVideoReceiver on " + actorReceiver.gameObject.name);
-            }
-            else
-            {
-                Debug.LogWarning("PerformerWebcamControlPanel: WebRtcVideoReceiver not found. Actor mic selection will not be applied.");
-            }
-        }
-
         RefreshActorMicrophoneList();
-        StartCoroutine(WaitForSignalHub());
+        TryFindActorAudioEndpoint();
+        SubscribeToActorAudioEndpoint();
     }
 
     private void OnEnable()
     {
         TryFindControlHub();
+        TryFindActorAudioEndpoint();
+        SubscribeToActorAudioEndpoint();
 
         RefreshActorMicrophoneList();
-
-        if (WebRtcSignalHub.Instance != null)
-        {
-            SubscribeToSignalHub();
-            RequestAudienceMicrophoneList();
-        }
+        RequestAudienceMicrophoneList();
     }
 
     private void OnDisable()
@@ -126,6 +106,8 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             StopCoroutine(requestAudienceMicListCoroutine);
             requestAudienceMicListCoroutine = null;
         }
+
+        UnsubscribeFromActorAudioEndpoint();
     }
 
     private void OnDestroy()
@@ -160,39 +142,18 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             refreshAudioDevicesButton.onClick.RemoveListener(RefreshAudioDeviceLists);
         }
 
-        if (WebRtcSignalHub.Instance != null)
+        if (startAudioButton != null)
         {
-            WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
+            startAudioButton.onClick.RemoveListener(OnStartAudioClicked);
         }
 
-        signalHubSubscribed = false;
-    }
-
-    private System.Collections.IEnumerator WaitForSignalHub()
-    {
-        while (WebRtcSignalHub.Instance == null)
+        if (stopAudioButton != null)
         {
-            yield return null;
+            stopAudioButton.onClick.RemoveListener(OnStopAudioClicked);
         }
 
-        SubscribeToSignalHub();
+        UnsubscribeFromActorAudioEndpoint();
 
-        Debug.Log("PerformerWebcamControlPanel: Connected to WebRtcSignalHub for audio device control.");
-
-        RequestAudienceMicrophoneList();
-    }
-
-    private void SubscribeToSignalHub()
-    {
-        if (WebRtcSignalHub.Instance == null)
-            return;
-
-        WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
-        WebRtcSignalHub.Instance.OnSignalReceived += OnSignalReceived;
-
-        signalHubSubscribed = true;
-
-        Debug.Log("PerformerWebcamControlPanel: Subscribed to WebRtcSignalHub.");
     }
 
     private void TryFindControlHub()
@@ -209,6 +170,52 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         }
 
         Debug.Log("PerformerWebcamControlPanel: NetworkWebcamControlHub found.");
+    }
+
+    private void TryFindActorAudioEndpoint()
+    {
+        if (actorAudioEndpoint != null)
+            return;
+
+        WebRtcAudioEndpoint[] endpoints =
+            FindObjectsByType<WebRtcAudioEndpoint>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        foreach (WebRtcAudioEndpoint endpoint in endpoints)
+        {
+            if (endpoint.Role == WebRtcAudioEndpoint.EndpointRole.Actor)
+            {
+                actorAudioEndpoint = endpoint;
+                break;
+            }
+        }
+
+        if (actorAudioEndpoint == null)
+            Debug.LogWarning("PerformerWebcamControlPanel: Actor WebRtcAudioEndpoint not found yet.");
+    }
+
+    private void SubscribeToActorAudioEndpoint()
+    {
+        if (actorAudioEndpoint == null)
+            return;
+
+        actorAudioEndpoint.AudienceMicrophoneListReceived -= SetAudienceMicrophoneList;
+        actorAudioEndpoint.AudienceMicrophoneListReceived += SetAudienceMicrophoneList;
+        actorAudioEndpoint.AudienceMicrophoneSelectionAcknowledged -= OnAudienceMicrophoneSelectionAcknowledged;
+        actorAudioEndpoint.AudienceMicrophoneSelectionAcknowledged += OnAudienceMicrophoneSelectionAcknowledged;
+        actorAudioEndpoint.StateChanged -= OnAudioStateChanged;
+        actorAudioEndpoint.StateChanged += OnAudioStateChanged;
+
+        OnAudioStateChanged(actorAudioEndpoint.State, "Audio endpoint ready.");
+    }
+
+    private void UnsubscribeFromActorAudioEndpoint()
+    {
+        if (actorAudioEndpoint == null)
+            return;
+
+        actorAudioEndpoint.AudienceMicrophoneListReceived -= SetAudienceMicrophoneList;
+        actorAudioEndpoint.AudienceMicrophoneSelectionAcknowledged -= OnAudienceMicrophoneSelectionAcknowledged;
+        actorAudioEndpoint.StateChanged -= OnAudioStateChanged;
     }
 
     // =========================
@@ -351,7 +358,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         // Empty string means default microphone.
         actorMicDevices.Add("");
 
-        string[] devices = Microphone.devices;
+        TryFindActorAudioEndpoint();
+
+        string[] devices = actorAudioEndpoint != null
+            ? actorAudioEndpoint.GetLocalMicrophoneDevices()
+            : Microphone.devices;
 
         if (devices != null && devices.Length > 0)
         {
@@ -385,7 +396,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         actorMicDropdown.AddOptions(options);
 
         selectedActorMicIndex = 0;
-        actorMicDropdown.value = 0;
+        actorMicDropdown.SetValueWithoutNotify(0);
         actorMicDropdown.RefreshShownValue();
         actorMicDropdown.interactable = true;
 
@@ -412,10 +423,12 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         while (retryCount < maxRetryCount)
         {
-            if (WebRtcSignalHub.Instance == null)
+            TryFindActorAudioEndpoint();
+
+            if (actorAudioEndpoint == null)
             {
                 Debug.LogWarning(
-                    "PerformerWebcamControlPanel: WebRtcSignalHub is missing. " +
+                    "PerformerWebcamControlPanel: Actor audio endpoint is missing. " +
                     "Retry audience microphone list request."
                 );
 
@@ -424,14 +437,9 @@ public class PerformerWebcamControlPanel : MonoBehaviour
                 continue;
             }
 
-            if (!signalHubSubscribed)
-            {
-                SubscribeToSignalHub();
-            }
+            SubscribeToActorAudioEndpoint();
 
-            PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
-
-            if (target == PlayerRef.None)
+            if (!actorAudioEndpoint.RequestAudienceMicrophoneList())
             {
                 Debug.LogWarning(
                     "PerformerWebcamControlPanel: No audience player found. " +
@@ -443,13 +451,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
                 continue;
             }
 
-            Debug.Log("PerformerWebcamControlPanel: Requesting audience microphone list from " + target);
-
-            WebRtcSignalHub.Instance.SendSignal(
-                target,
-                "audience_mic_list_request",
-                "{}"
-            );
+            Debug.Log("PerformerWebcamControlPanel: Requested the Audience microphone list.");
 
             requestAudienceMicListCoroutine = null;
             yield break;
@@ -458,45 +460,6 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         Debug.LogWarning("PerformerWebcamControlPanel: Failed to request audience microphone list after retries.");
 
         requestAudienceMicListCoroutine = null;
-    }
-
-    private void OnSignalReceived(PlayerRef from, string type, string payload)
-    {
-        Debug.Log(
-            "PerformerWebcamControlPanel: Signal received. " +
-            "Type = " + type +
-            ", From = " + from +
-            ", PayloadLength = " + (payload != null ? payload.Length : 0)
-        );
-
-        if (type == "audience_mic_list")
-        {
-            HandleAudienceMicrophoneList(payload);
-        }
-    }
-
-    private void HandleAudienceMicrophoneList(string payload)
-    {
-        Debug.Log("PerformerWebcamControlPanel: Handling audience microphone list. Payload = " + payload);
-
-        MicrophoneDeviceListSignal signal =
-            JsonUtility.FromJson<MicrophoneDeviceListSignal>(payload);
-
-        if (signal == null)
-        {
-            Debug.LogWarning("PerformerWebcamControlPanel: Invalid audience microphone list payload.");
-            return;
-        }
-
-        int count = signal.devices != null ? signal.devices.Length : 0;
-
-        Debug.Log(
-            "PerformerWebcamControlPanel: Parsed audience microphone list. " +
-            "DeviceCount = " + count +
-            ", Selected = " + (string.IsNullOrEmpty(signal.selectedDevice) ? "Default" : signal.selectedDevice)
-        );
-
-        SetAudienceMicrophoneList(signal.devices, signal.selectedDevice);
     }
 
     public void SetAudienceMicrophoneList(string[] devices, string selectedDevice)
@@ -549,7 +512,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         }
 
         selectedAudienceMicIndex = selectedIndex;
-        audienceMicDropdown.value = selectedIndex;
+        audienceMicDropdown.SetValueWithoutNotify(selectedIndex);
         audienceMicDropdown.RefreshShownValue();
         audienceMicDropdown.interactable = true;
 
@@ -575,13 +538,15 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
         );
 
-        if (actorReceiver != null)
+        TryFindActorAudioEndpoint();
+
+        if (actorAudioEndpoint != null)
         {
-            actorReceiver.SetMicrophoneDeviceName(selectedDevice);
+            actorAudioEndpoint.SetMicrophoneDeviceName(selectedDevice);
         }
         else
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: actorReceiver is null. Actor microphone selection was not applied.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Actor audio endpoint is missing. Actor microphone selection was not applied.");
         }
     }
 
@@ -592,38 +557,180 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         selectedAudienceMicIndex = index;
 
-        if (WebRtcSignalHub.Instance == null)
-        {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot send audience microphone selection. WebRtcSignalHub is missing.");
-            return;
-        }
+        TryFindActorAudioEndpoint();
 
-        PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
-
-        if (target == PlayerRef.None)
+        if (actorAudioEndpoint == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot send audience microphone selection. No audience player found.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot select Audience microphone. Actor audio endpoint is missing.");
             return;
         }
 
         string selectedDevice = audienceMicDevices[index];
-
-        MicrophoneDeviceSelectSignal signal = new MicrophoneDeviceSelectSignal
-        {
-            deviceName = selectedDevice
-        };
-
-        string json = JsonUtility.ToJson(signal);
 
         Debug.Log(
             "PerformerWebcamControlPanel: Sending audience microphone selection: " +
             (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
         );
 
-        WebRtcSignalHub.Instance.SendSignal(
-            target,
-            "audience_mic_select",
-            json
+        if (!actorAudioEndpoint.SelectAudienceMicrophone(selectedDevice))
+            Debug.LogWarning("PerformerWebcamControlPanel: Audience microphone selection could not be sent.");
+    }
+
+    public void OnStartAudioClicked()
+    {
+        TryFindControlHub();
+        TryFindActorAudioEndpoint();
+
+        if (controlHub != null)
+        {
+            controlHub.RequestStartAudienceAudio();
+            return;
+        }
+
+        if (actorAudioEndpoint != null)
+        {
+            actorAudioEndpoint.StartAudioSession();
+            return;
+        }
+
+        SetAudioStatus("Cannot start audio: Actor audio endpoint is missing.");
+    }
+
+    public void OnStopAudioClicked()
+    {
+        TryFindControlHub();
+        TryFindActorAudioEndpoint();
+
+        if (controlHub != null)
+        {
+            controlHub.RequestStopAudienceAudio();
+            return;
+        }
+
+        if (actorAudioEndpoint != null)
+        {
+            actorAudioEndpoint.StopAudioSession();
+            return;
+        }
+
+        SetAudioStatus("Cannot stop audio: Actor audio endpoint is missing.");
+    }
+
+    private void OnAudienceMicrophoneSelectionAcknowledged(
+        string deviceName,
+        bool success,
+        string message)
+    {
+        string label = string.IsNullOrEmpty(deviceName) ? "Default Audience Microphone" : deviceName;
+        SetAudioStatus(
+            success
+                ? "Audience microphone selected: " + label
+                : "Audience microphone selection failed: " + message
         );
+    }
+
+    private void OnAudioStateChanged(WebRtcAudioEndpoint.SessionState state, string message)
+    {
+        SetAudioStatus(state + ": " + message);
+
+        if (startAudioButton != null)
+        {
+            startAudioButton.interactable =
+                state == WebRtcAudioEndpoint.SessionState.Idle ||
+                state == WebRtcAudioEndpoint.SessionState.Failed;
+        }
+
+        if (stopAudioButton != null)
+        {
+            stopAudioButton.interactable =
+                state != WebRtcAudioEndpoint.SessionState.Idle &&
+                state != WebRtcAudioEndpoint.SessionState.WaitingForSignalHub;
+        }
+    }
+
+    private void SetAudioStatus(string message)
+    {
+        if (audioStatusText != null)
+            audioStatusText.text = message;
+
+        Debug.Log("PerformerWebcamControlPanel: Audio status = " + message);
+    }
+
+    private void CreateRuntimeAudioControlsIfNeeded()
+    {
+        if (refreshAudioDevicesButton == null)
+            return;
+
+        if (startAudioButton == null)
+            startAudioButton = CloneAudioButton(refreshAudioDevicesButton, "Start Audio", 1);
+
+        if (stopAudioButton == null)
+            stopAudioButton = CloneAudioButton(refreshAudioDevicesButton, "Stop Audio", 2);
+
+        if (audioStatusText == null)
+            audioStatusText = CreateAudioStatusText(refreshAudioDevicesButton, 3);
+    }
+
+    private static Button CloneAudioButton(Button template, string label, int rowOffset)
+    {
+        Button clone = Instantiate(template, template.transform.parent);
+        clone.name = label + " Button";
+        clone.onClick = new Button.ButtonClickedEvent();
+
+        RectTransform sourceRect = template.transform as RectTransform;
+        RectTransform cloneRect = clone.transform as RectTransform;
+
+        if (sourceRect != null && cloneRect != null)
+        {
+            float height = Mathf.Max(Mathf.Abs(sourceRect.sizeDelta.y), sourceRect.rect.height);
+            float step = Mathf.Max(8f, height * 1.15f);
+            cloneRect.anchoredPosition = sourceRect.anchoredPosition + Vector2.down * step * rowOffset;
+        }
+
+        TMP_Text text = clone.GetComponentInChildren<TMP_Text>(true);
+        if (text != null)
+            text.text = label;
+
+        return clone;
+    }
+
+    private static TMP_Text CreateAudioStatusText(Button template, int rowOffset)
+    {
+        RectTransform sourceRect = template.transform as RectTransform;
+        TMP_Text templateText = template.GetComponentInChildren<TMP_Text>(true);
+
+        GameObject statusObject = new GameObject(
+            "Audio Status Text",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI)
+        );
+        statusObject.transform.SetParent(template.transform.parent, false);
+
+        RectTransform statusRect = statusObject.GetComponent<RectTransform>();
+        TextMeshProUGUI statusText = statusObject.GetComponent<TextMeshProUGUI>();
+
+        if (sourceRect != null)
+        {
+            float height = Mathf.Max(Mathf.Abs(sourceRect.sizeDelta.y), sourceRect.rect.height);
+            float step = Mathf.Max(8f, height * 1.15f);
+            statusRect.anchorMin = sourceRect.anchorMin;
+            statusRect.anchorMax = sourceRect.anchorMax;
+            statusRect.pivot = sourceRect.pivot;
+            statusRect.sizeDelta = new Vector2(sourceRect.sizeDelta.x * 2f, sourceRect.sizeDelta.y);
+            statusRect.anchoredPosition = sourceRect.anchoredPosition + Vector2.down * step * rowOffset;
+        }
+
+        if (templateText != null)
+        {
+            statusText.font = templateText.font;
+            statusText.fontSize = templateText.fontSize;
+            statusText.color = templateText.color;
+        }
+
+        statusText.alignment = TextAlignmentOptions.Center;
+        statusText.text = "Audio: Idle";
+        statusText.raycastTarget = false;
+        return statusText;
     }
 }
