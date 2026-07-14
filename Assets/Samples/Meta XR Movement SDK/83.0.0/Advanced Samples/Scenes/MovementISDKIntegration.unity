@@ -35742,6 +35742,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 1006608156584538038, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 54f9153bb5387d04ead6b06e583416b3, type: 2}
     - target: {fileID: 1357351749284166938, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
       propertyPath: m_Enabled
       value: 1
@@ -35750,9 +35754,21 @@ PrefabInstance:
       propertyPath: m_CullingMask.m_Bits
       value: 4026547711
       objectReference: {fileID: 0}
+    - target: {fileID: 3823822362610980537, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 54f9153bb5387d04ead6b06e583416b3, type: 2}
+    - target: {fileID: 5971738306450131601, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 54f9153bb5387d04ead6b06e583416b3, type: 2}
     - target: {fileID: 6270804132948521979, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
       propertyPath: m_Enabled
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6437272894896458180, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -0.0556
       objectReference: {fileID: 0}
     - target: {fileID: 7358645986571288710, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
       propertyPath: _leftHand
@@ -35770,6 +35786,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 8870793955220457402, guid: 278af26b3fcba584b83c1ecb4f71655d, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 54f9153bb5387d04ead6b06e583416b3, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
