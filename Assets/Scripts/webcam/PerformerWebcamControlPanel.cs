@@ -358,31 +358,36 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     public void OnStartAudioClicked()
     {
-        if (!TrySendSignalToAudience("audio_start_request", "{}"))
+        TryFindControlHub();
+
+        if (controlHub == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start audio because the audience is not connected yet.");
-            RequestAudienceMicrophoneList();
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot start audio. NetworkWebcamControlHub is missing.");
             return;
         }
 
+        controlHub.RequestStartAudienceAudio();
         audioStartRequested = true;
         UpdateAudioButtonState();
 
-        Debug.Log("PerformerWebcamControlPanel: Audio start request sent to Audience.");
+        Debug.Log("PerformerWebcamControlPanel: Remote PC audio start request sent through the same Fusion RPC path as video.");
     }
 
     public void OnStopAudioClicked()
     {
-        if (!TrySendSignalToAudience("audio_stop_request", "{}"))
+        TryFindControlHub();
+
+        if (controlHub == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop audio because the audience is not connected.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Cannot stop audio. NetworkWebcamControlHub is missing.");
             return;
         }
 
+        controlHub.RequestStopAudienceAudio();
         audioStartRequested = false;
         UpdateAudioButtonState();
 
-        Debug.Log("PerformerWebcamControlPanel: Audio stop request sent to Audience.");
+        Debug.Log("PerformerWebcamControlPanel: Remote PC audio stop request sent through Fusion RPC.");
     }
 
     // =========================
@@ -562,21 +567,25 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         while (!audienceMicListReceived)
         {
-            if (WebRtcSignalHub.Instance == null)
+            TryFindControlHub();
+
+            if (controlHub == null)
             {
                 Debug.LogWarning(
-                    "PerformerWebcamControlPanel: WebRtcSignalHub is not ready. " +
+                    "PerformerWebcamControlPanel: NetworkWebcamControlHub is not ready. " +
                     "Retry audience microphone list request."
                 );
             }
             else
             {
-                SubscribeToSignalHub();
+                controlHub.RequestAudienceMicrophoneList();
 
-                if (TrySendSignalToAudience("audience_mic_list_request", "{}") &&
-                    (retryCount == 0 || retryCount % 5 == 0))
+                if (retryCount == 0 || retryCount % 5 == 0)
                 {
-                    Debug.Log("PerformerWebcamControlPanel: Audience microphone list request sent. Attempt " + (retryCount + 1));
+                    Debug.Log(
+                        "PerformerWebcamControlPanel: Remote PC microphone list requested through Fusion RPC. Attempt " +
+                        (retryCount + 1)
+                    );
                 }
             }
 
@@ -628,7 +637,10 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         UpdateAudioButtonState();
     }
 
-    public void SetAudienceMicrophoneList(string[] devices, string selectedDevice)
+    public void SetAudienceMicrophoneList(
+        string[] devices,
+        string selectedDevice,
+        string endpointLabel = null)
     {
         audienceMicListReceived = true;
         audienceMicDevices.Clear();
@@ -659,11 +671,19 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
             if (string.IsNullOrEmpty(device))
             {
-                options.Add("Default Audience Microphone");
+                options.Add("Default Remote PC Microphone");
             }
             else
             {
                 options.Add(device);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(endpointLabel))
+        {
+            for (int i = 0; i < options.Count; i++)
+            {
+                options[i] = "[Remote PC: " + endpointLabel + "] " + options[i];
             }
         }
 
@@ -733,33 +753,20 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         string selectedDevice = audienceMicDevices[index];
 
-        MicrophoneDeviceSelectSignal signal = new MicrophoneDeviceSelectSignal
-        {
-            deviceName = selectedDevice
-        };
-
         Debug.Log(
-            "PerformerWebcamControlPanel: Sending audience microphone selection: " +
+            "PerformerWebcamControlPanel: Sending remote PC microphone selection through Fusion RPC: " +
             (string.IsNullOrEmpty(selectedDevice) ? "Default" : selectedDevice)
         );
 
-        if (!TrySendSignalToAudience("audience_mic_select", JsonUtility.ToJson(signal)))
+        TryFindControlHub();
+
+        if (controlHub == null)
         {
-            Debug.LogWarning("PerformerWebcamControlPanel: Audience microphone selection was not sent because the audience is not connected.");
+            Debug.LogWarning("PerformerWebcamControlPanel: Remote PC microphone selection was not sent because NetworkWebcamControlHub is missing.");
+            return;
         }
-    }
 
-    private bool TrySendSignalToAudience(string type, string payload)
-    {
-        if (WebRtcSignalHub.Instance == null)
-            return false;
-
-        PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
-        if (target == PlayerRef.None)
-            return false;
-
-        WebRtcSignalHub.Instance.SendSignal(target, type, payload);
-        return true;
+        controlHub.RequestSelectAudienceMicrophone(selectedDevice);
     }
 
     private void UpdateAudioButtonState()

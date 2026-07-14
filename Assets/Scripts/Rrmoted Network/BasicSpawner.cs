@@ -231,13 +231,12 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
                 $"LocalPlayer={(_runner != null ? _runner.LocalPlayer.ToString() : "None")}"
             );
 
-            //if (_runner != null && _runner.IsServer)
-            //{
-            //    DebugSpawn("Calling TrySpawnInitialNetworkObjects immediately after StartGame succeeded.");
-            //    TrySpawnInitialNetworkObjects(_runner);
-            //}
-
-            DebugSpawn("StartGame succeeded. Waiting for OnSceneLoadDone before spawning initial network objects.");
+            if (_runner != null && _runner.IsServer)
+            {
+                DebugSpawn("StartGame succeeded on Host. Trying initial network spawns immediately.");
+                TrySpawnInitialNetworkObjects(_runner);
+                TrySpawnActorAvatarForHost(_runner, _runner.LocalPlayer);
+            }
         }
         else
         {
@@ -391,19 +390,19 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         if (!runner.IsServer)
             return;
 
-        TrySpawnInitialNetworkObjects(runner);
-
         bool isActorHostPlayer = player == runner.LocalPlayer;
 
         if (isActorHostPlayer)
         {
-            SpawnActorAvatarForHost(runner, player);
+            TrySpawnActorAvatarForHost(runner, player);
             Debug.Log("BasicSpawner: Actor Host joined. ActorAvatar spawn attempted.");
         }
         else
         {
             Debug.Log("BasicSpawner: Audience Client joined. No audience avatar spawned.");
         }
+
+        TrySpawnInitialNetworkObjects(runner);
     }
 
     private void TrySpawnInitialNetworkObjects(NetworkRunner runner)
@@ -426,11 +425,26 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             return;
         }
 
-        SpawnWebRtcSignalHubIfNeeded(runner);
-        SpawnNetworkWebcamControlHubIfNeeded(runner);
-        SpawnNetworkInteractableObjectsIfNeeded(runner);
+        TryRunSpawnStep("WebRtcSignalHub", () => SpawnWebRtcSignalHubIfNeeded(runner));
+        TryRunSpawnStep("NetworkWebcamControlHub", () => SpawnNetworkWebcamControlHubIfNeeded(runner));
+        TryRunSpawnStep("NetworkInteractables", () => SpawnNetworkInteractableObjectsIfNeeded(runner));
 
         Debug.Log("BasicSpawner: Initial network objects checked/spawned by Actor Host.");
+    }
+
+    private void TryRunSpawnStep(string stepName, Action spawnStep)
+    {
+        try
+        {
+            spawnStep?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            DebugSpawnError(
+                $"Network spawn step '{stepName}' failed, but the remaining spawn steps will continue. " +
+                $"Exception={exception}"
+            );
+        }
     }
 
     private void SpawnWebRtcSignalHubIfNeeded(NetworkRunner runner)
@@ -449,6 +463,12 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             Vector3.zero,
             Quaternion.identity
         );
+
+        if (_webRtcSignalHubObject == null)
+        {
+            DebugSpawnError("Runner.Spawn returned null for WebRtcSignalHub.");
+            return;
+        }
 
         Debug.Log("BasicSpawner: WebRtcSignalHub spawned by Actor Host.");
     }
@@ -470,7 +490,27 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             Quaternion.identity
         );
 
+        if (_networkWebcamControlHubObject == null)
+        {
+            DebugSpawnError("Runner.Spawn returned null for NetworkWebcamControlHub.");
+            return;
+        }
+
         Debug.Log("BasicSpawner: NetworkWebcamControlHub spawned by Actor Host.");
+    }
+
+    private void TrySpawnActorAvatarForHost(NetworkRunner runner, PlayerRef player)
+    {
+        if (runner == null || !runner.IsServer)
+            return;
+
+        if (player == PlayerRef.None)
+        {
+            DebugSpawnWarning("ActorAvatar spawn deferred because the Host LocalPlayer is not ready yet.");
+            return;
+        }
+
+        TryRunSpawnStep("ActorAvatar", () => SpawnActorAvatarForHost(runner, player));
     }
 
     private void SpawnActorAvatarForHost(NetworkRunner runner, PlayerRef player)
@@ -503,6 +543,12 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             spawnRotation,
             player
         );
+
+        if (_actorAvatarObject == null)
+        {
+            DebugSpawnError("Runner.Spawn returned null for ActorAvatar.");
+            return;
+        }
 
         runner.SetPlayerObject(player, _actorAvatarObject);
         _spawnedObjects[player] = _actorAvatarObject;

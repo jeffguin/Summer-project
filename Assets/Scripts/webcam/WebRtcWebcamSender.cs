@@ -56,6 +56,7 @@ public class WebRtcWebcamSender : MonoBehaviour
     private Coroutine webRtcUpdateCoroutine;
     private Coroutine startVideoRoutine;
     private Coroutine startAudioRoutine;
+    private Coroutine audioStatsRoutine;
 
     private bool videoRemoteDescriptionSet = false;
     private bool audioRemoteDescriptionSet = false;
@@ -624,6 +625,12 @@ public class WebRtcWebcamSender : MonoBehaviour
             remoteAudioSource.clip = null;
         }
 
+        if (audioStatsRoutine != null)
+        {
+            StopCoroutine(audioStatsRoutine);
+            audioStatsRoutine = null;
+        }
+
         if (audioPeerConnection != null)
         {
             audioPeerConnection.Close();
@@ -702,7 +709,67 @@ public class WebRtcWebcamSender : MonoBehaviour
             Debug.Log("WebRtcWebcamSender: Audio connection state: " + state);
         };
 
+        audioStatsRoutine = StartCoroutine(LogAudioStatsRoutine());
+
         Debug.Log("WebRtcWebcamSender: Audio PeerConnection created.");
+    }
+
+    private IEnumerator LogAudioStatsRoutine()
+    {
+        WaitForSecondsRealtime interval = new WaitForSecondsRealtime(3f);
+
+        while (audioPeerConnection != null)
+        {
+            yield return interval;
+
+            RTCPeerConnection connection = audioPeerConnection;
+            if (connection == null)
+                break;
+
+            RTCStatsReportAsyncOperation statsOperation = connection.GetStats();
+            yield return statsOperation;
+
+            if (statsOperation.IsError)
+            {
+                Debug.LogWarning("WebRtcWebcamSender: PC audio GetStats failed: " + statsOperation.Error.errorType);
+                continue;
+            }
+
+            ulong outboundPackets = 0;
+            uint inboundPackets = 0;
+            double inboundAudioEnergy = 0d;
+
+            RTCStatsReport report = statsOperation.Value;
+
+            foreach (RTCStats stats in report.Stats.Values)
+            {
+                RTCOutboundRTPStreamStats outbound = stats as RTCOutboundRTPStreamStats;
+                if (outbound != null && outbound.kind == "audio")
+                {
+                    outboundPackets += outbound.packetsSent;
+                }
+
+                RTCInboundRTPStreamStats inbound = stats as RTCInboundRTPStreamStats;
+                if (inbound != null && inbound.kind == "audio")
+                {
+                    inboundPackets += inbound.packetsReceived;
+                    inboundAudioEnergy += inbound.totalAudioEnergy;
+                }
+            }
+
+            report.Dispose();
+
+            Debug.Log(
+                "AUDIO_DIAGNOSTICS [Audience PC] " +
+                "OutboundPackets=" + outboundPackets +
+                ", InboundPackets=" + inboundPackets +
+                ", InboundAudioEnergy=" + inboundAudioEnergy.ToString("F6") +
+                ", PlaybackSourceExists=" + (remoteAudioSource != null) +
+                ", PlaybackIsPlaying=" + (remoteAudioSource != null && remoteAudioSource.isPlaying)
+            );
+        }
+
+        audioStatsRoutine = null;
     }
 
     private IEnumerator StartLocalMicrophoneAndAddAudioTrack()
@@ -825,11 +892,49 @@ public class WebRtcWebcamSender : MonoBehaviour
         remoteAudioSource.loop = true;
         remoteAudioSource.spatialBlend = 0f;
         remoteAudioSource.volume = 1f;
+        remoteAudioSource.mute = false;
+        remoteAudioSource.ignoreListenerPause = true;
+
+        EnsureAudioListenerForPlayback(remoteAudioSource, "Audience PC");
 
         remoteAudioSource.SetTrack(remoteAudioTrack);
         remoteAudioSource.Play();
 
-        Debug.Log("WebRtcWebcamSender: Remote audio track attached to AudioSource.");
+        Debug.Log(
+            "WebRtcWebcamSender: Remote Actor audio track attached to PC AudioSource. " +
+            "Source = " + remoteAudioSource.gameObject.name +
+            ", IsPlaying = " + remoteAudioSource.isPlaying
+        );
+    }
+
+    private void EnsureAudioListenerForPlayback(AudioSource playbackSource, string endpointName)
+    {
+        AudioListener listener = FindObjectOfType<AudioListener>();
+
+        if (listener == null)
+        {
+            listener = playbackSource.gameObject.AddComponent<AudioListener>();
+            Debug.LogWarning(
+                "WebRtcWebcamSender: No active AudioListener existed on " + endpointName +
+                ". Created a fallback listener on the remote audio object."
+            );
+        }
+
+        if (AudioListener.pause)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: AudioListener was paused. Remote call audio ignores listener pause.");
+        }
+
+        if (AudioListener.volume <= 0f)
+        {
+            AudioListener.volume = 1f;
+            Debug.LogWarning("WebRtcWebcamSender: AudioListener global volume was zero and has been restored to 1.");
+        }
+
+        Debug.Log(
+            "WebRtcWebcamSender: PC playback listener ready. Listener = " + listener.gameObject.name +
+            ", GlobalVolume = " + AudioListener.volume
+        );
     }
 
     private AudioSource GetOrCreateIsolatedAudioSource(
