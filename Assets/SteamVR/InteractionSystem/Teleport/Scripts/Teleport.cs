@@ -131,7 +131,7 @@ namespace Valve.VR.InteractionSystem
 			{
 				if ( _instance == null )
 				{
-					_instance = GameObject.FindFirstObjectByType<Teleport>();
+					_instance = GameObject.FindObjectOfType<Teleport>();
 				}
 
 				return _instance;
@@ -173,8 +173,7 @@ namespace Valve.VR.InteractionSystem
 		//-------------------------------------------------
 		void Start()
         {
-            teleportMarkers =
-                GameObject.FindObjectsByType<TeleportMarkerBase>(FindObjectsSortMode.InstanceID);
+            teleportMarkers = GameObject.FindObjectsOfType<TeleportMarkerBase>();
 
 			HidePointer();
 

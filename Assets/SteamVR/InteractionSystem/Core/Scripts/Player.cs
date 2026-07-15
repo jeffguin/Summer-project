@@ -53,7 +53,7 @@ namespace Valve.VR.InteractionSystem
 			{
 				if ( _instance == null )
 				{
-					_instance = FindFirstObjectByType<Player>();
+					_instance = FindObjectOfType<Player>();
 				}
 				return _instance;
 			}

@@ -739,6 +739,7 @@ namespace Valve.VR
                 case UnityEngine.Rendering.GraphicsDeviceType.OpenGL2:
 #endif
                 case UnityEngine.Rendering.GraphicsDeviceType.OpenGLCore:
+                case UnityEngine.Rendering.GraphicsDeviceType.OpenGLES2:
                 case UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3:
                     textureType = ETextureType.OpenGL;
                     break;
