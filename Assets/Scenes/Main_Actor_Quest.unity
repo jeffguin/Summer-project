@@ -4569,63 +4569,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 292726853}
   m_CullTransparentMesh: 1
---- !u!1001 &293754135
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -0.1249
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 1.169
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0.04400006
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 0.7071067
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0.7071068
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 9008149963083097163, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 9011378319965958733, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
-      propertyPath: m_Name
-      value: Chess Queen White Variant
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 47fa069e5684fab4196ce41d3b65a0d3, type: 3}
 --- !u!43 &294207682
 Mesh:
   m_ObjectHideFlags: 0
@@ -14436,7 +14379,7 @@ PrefabInstance:
       objectReference: {fileID: 157402412}
     - target: {fileID: 2266696356226604469, guid: 9599d35f62bd0da42b765c9aa5da169a, type: 3}
       propertyPath: m_VersionIndex
-      value: 2322
+      value: 2340
       objectReference: {fileID: 0}
     - target: {fileID: 3330690747699217352, guid: 9599d35f62bd0da42b765c9aa5da169a, type: 3}
       propertyPath: m_Mesh
@@ -14456,7 +14399,7 @@ PrefabInstance:
       objectReference: {fileID: 1686115503}
     - target: {fileID: 7505796511698006879, guid: 9599d35f62bd0da42b765c9aa5da169a, type: 3}
       propertyPath: m_VersionIndex
-      value: 1078
+      value: 1096
       objectReference: {fileID: 0}
     - target: {fileID: 8874814014154558756, guid: 9599d35f62bd0da42b765c9aa5da169a, type: 3}
       propertyPath: m_LocalPosition.x
@@ -14519,6 +14462,7 @@ GameObject:
   - component: {fileID: 814317453}
   - component: {fileID: 814317452}
   - component: {fileID: 814317454}
+  - component: {fileID: 814317455}
   m_Layer: 0
   m_Name: ActorWebRtcReceiver
   m_TagString: Untagged
@@ -14573,7 +14517,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   role: 0
-  captureService: {fileID: 0}
+  captureService: {fileID: 814317455}
   remotePlaybackAudioSource: {fileID: 0}
   useStun: 1
   stunUrl: stun:stun.relay.metered.ca:80
@@ -14583,6 +14527,23 @@ MonoBehaviour:
   turnUsername: b7fea3a8499e5a5c3fe1d563
   turnCredential: TZOX+7a9nbjiue/j
   connectionTimeoutSeconds: 20
+--- !u!114 &814317455
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 814317451}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4c794a2587e440084373ca4137e786d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  captureAudioSource: {fileID: 0}
+  sampleRate: 48000
+  clipLengthSeconds: 1
+  permissionTimeoutSeconds: 15
+  captureStartTimeoutSeconds: 5
 --- !u!1 &852199591
 GameObject:
   m_ObjectHideFlags: 0
@@ -30549,7 +30510,7 @@ PrefabInstance:
       objectReference: {fileID: 656265006}
     - target: {fileID: 3859846150802987004, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 1114
+      value: 1165
       objectReference: {fileID: 0}
     - target: {fileID: 4080988023871556050, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
@@ -30565,7 +30526,7 @@ PrefabInstance:
       objectReference: {fileID: 2128266092}
     - target: {fileID: 4813771740812048662, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_VersionIndex
-      value: 2358
+      value: 2409
       objectReference: {fileID: 0}
     - target: {fileID: 4976438376395507026, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
       propertyPath: m_Mesh
@@ -33222,5 +33183,4 @@ SceneRoots:
   - {fileID: 1437393714}
   - {fileID: 1995062097}
   - {fileID: 1426404601}
-  - {fileID: 293754135}
   - {fileID: 1447765263}
