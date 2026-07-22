@@ -55,19 +55,30 @@ public class NetworkInteractionAudio : NetworkBehaviour
 
     private float nextAllowedImpactTime;
 
+    private void Awake()
+    {
+        EnsureAudioSource();
+        ConfigureAudioSource();
+    }
+
     private void Reset()
     {
         audioSource = GetComponent<AudioSource>();
+        ConfigureAudioSource();
     }
 
     public override void Spawned()
+    {
+        EnsureAudioSource();
+        ConfigureAudioSource();
+    }
+
+    private void EnsureAudioSource()
     {
         if (audioSource == null)
         {
             audioSource = GetComponent<AudioSource>();
         }
-
-        ConfigureAudioSource();
     }
 
     private void ConfigureAudioSource()
@@ -77,9 +88,26 @@ public class NetworkInteractionAudio : NetworkBehaviour
             return;
         }
 
+        audioSource.enabled = true;
         audioSource.playOnAwake = false;
         audioSource.loop = false;
         audioSource.spatialBlend = 1f;
+    }
+
+    // These parameterless methods can be connected directly to UnityEvents.
+    public void RequestPlayGrab()
+    {
+        RequestPlaySound(InteractionSoundType.Grab);
+    }
+
+    public void RequestPlayRelease()
+    {
+        RequestPlaySound(InteractionSoundType.Release);
+    }
+
+    public void RequestPlayActivate()
+    {
+        RequestPlaySound(InteractionSoundType.Activate);
     }
 
     /// <summary>
@@ -113,6 +141,33 @@ public class NetworkInteractionAudio : NetworkBehaviour
         }
 
         RPC_RequestPlaySound(soundType, intensity);
+    }
+
+    /// <summary>
+    /// 供已经由 State Authority 验证通过的交互调用，避免再次绕行请求 RPC。
+    /// </summary>
+    public void PlayFromStateAuthority(
+        InteractionSoundType soundType,
+        float intensity = 1f)
+    {
+        intensity = Mathf.Clamp01(intensity);
+
+        if (Object == null || !Object.IsValid)
+        {
+            PlaySoundLocally(soundType, intensity);
+            return;
+        }
+
+        if (!Object.HasStateAuthority)
+        {
+            Debug.LogWarning(
+                $"[NetworkInteractionAudio] {gameObject.name}: " +
+                "PlayFromStateAuthority can only be called by State Authority."
+            );
+            return;
+        }
+
+        RPC_PlaySoundForEveryone(soundType, intensity);
     }
 
     /// <summary>
@@ -155,6 +210,8 @@ public class NetworkInteractionAudio : NetworkBehaviour
         InteractionSoundType soundType,
         float intensity)
     {
+        EnsureAudioSource();
+
         if (audioSource == null)
         {
             return;
@@ -197,6 +254,14 @@ public class NetworkInteractionAudio : NetworkBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
+        // 只让 State Authority 判断物理碰撞，避免双方对同一次碰撞重复广播。
+        if (Object == null ||
+            !Object.IsValid ||
+            !Object.HasStateAuthority)
+        {
+            return;
+        }
+
         if (Time.time < nextAllowedImpactTime)
         {
             return;
@@ -216,18 +281,8 @@ public class NetworkInteractionAudio : NetworkBehaviour
             maximumImpactVelocity,
             impactVelocity);
 
-        /*
-         * 只有 State Authority 检测并广播物理碰撞，
-         * 防止 Host 和 Client 都检测同一次碰撞，
-         * 导致音效播放两次。
-         */
-        if (Object != null &&
-            Object.IsValid &&
-            Object.HasStateAuthority)
-        {
-            RPC_PlaySoundForEveryone(
-                InteractionSoundType.Impact,
-                intensity);
-        }
+        PlayFromStateAuthority(
+            InteractionSoundType.Impact,
+            intensity);
     }
 }

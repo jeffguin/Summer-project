@@ -16,6 +16,10 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     [Header("Physics")]
     [SerializeField] private Rigidbody rb;
 
+    [Header("Interaction Audio")]
+    [Tooltip("可选。配置后，抓取和释放成功时会由 State Authority 向双方广播音效。")]
+    [SerializeField] private NetworkInteractionAudio interactionAudio;
+
     [Header("Grab Follow Settings")]
     [SerializeField] private float followSpeed = 25f;
     [SerializeField] private float rotateSpeed = 25f;
@@ -54,6 +58,11 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         {
             rb = GetComponent<Rigidbody>();
         }
+
+        if (interactionAudio == null)
+        {
+            interactionAudio = GetComponent<NetworkInteractionAudio>();
+        }
     }
 
     public override void Spawned()
@@ -61,6 +70,11 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         if (rb == null)
         {
             rb = GetComponent<Rigidbody>();
+        }
+
+        if (interactionAudio == null)
+        {
+            interactionAudio = GetComponent<NetworkInteractionAudio>();
         }
 
         TargetPosition = transform.position;
@@ -251,6 +265,13 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         DebugMessage(
             $"Grab accepted. Owner={GrabbedByPlayer}, Role={CurrentGrabRole}"
         );
+
+        if (interactionAudio != null)
+        {
+            interactionAudio.PlayFromStateAuthority(
+                NetworkInteractionAudio.InteractionSoundType.Grab
+            );
+        }
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -355,6 +376,13 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             $"Released successfully. Cooldown={releaseCooldown}, " +
             $"Velocity={estimatedVelocity}, AngularVelocity={estimatedAngularVelocity}"
         );
+
+        if (interactionAudio != null)
+        {
+            interactionAudio.PlayFromStateAuthority(
+                NetworkInteractionAudio.InteractionSoundType.Release
+            );
+        }
     }
 
     public bool IsControlledBy(PlayerRef player, GrabRole role)
