@@ -29,7 +29,15 @@ public class ArduinoController : MonoBehaviour
             serial.Write("2");
         }
 
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            serial.Write("3");
+        }
 
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            serial.Write("4");
+        }
         // Arduino > Unity
 
         if (serial.IsOpen)
