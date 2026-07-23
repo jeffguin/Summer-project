@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Fusion;
 using Fusion.Sockets;
+using Meta.XR.Movement.Networking.Fusion;
 using UnityEngine;
 
 public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
@@ -501,11 +502,65 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             _actorAvatarPrefab,
             spawnPosition,
             spawnRotation,
-            player
+            player,
+            (spawnRunner, spawnedObject) =>
+            {
+                NetworkCharacterBehaviourFusion movement =
+                    spawnedObject.GetComponent<NetworkCharacterBehaviourFusion>();
+
+                if (movement == null)
+                {
+                    Debug.LogError(
+                        "BasicSpawner: ActorAvatar is missing NetworkCharacterBehaviourFusion."
+                    );
+                    return;
+                }
+
+                movement.CharacterId = 1;
+                movement.MetaId = 0;
+            }
         );
 
         runner.SetPlayerObject(player, _actorAvatarObject);
         _spawnedObjects[player] = _actorAvatarObject;
+
+        ActorNetworkRootDriver rootDriver =
+            _actorAvatarObject.GetComponent<ActorNetworkRootDriver>();
+
+        if (rootDriver == null)
+        {
+            Debug.LogError(
+                "BasicSpawner: ActorNetworkRootDriver is missing on ActorAvatar."
+            );
+        }
+        else if (_actorLocalRig == null)
+        {
+            Debug.LogError(
+                "BasicSpawner: Actor Local Rig is not assigned. " +
+                "Actor root calibration cannot start."
+            );
+        }
+        else if (_actorSpawnPoint == null)
+        {
+            Debug.LogError(
+                "BasicSpawner: Actor Spawn Point is not assigned. " +
+                "Actor root calibration cannot start."
+            );
+        }
+        else
+        {
+            rootDriver.SetCalibrationReferences(
+                _actorLocalRig.transform,
+                _actorSpawnPoint
+            );
+
+            if (!rootDriver.Calibrate())
+            {
+                Debug.LogWarning(
+                    "BasicSpawner: Initial actor calibration failed."
+                );
+            }
+        }
 
         TryBindActorLocalSources(_actorAvatarObject);
     }
