@@ -8522,7 +8522,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 876035588}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c1bc9d34f10c20f47be4b4cc1c9dbc69, type: 3}
   m_Name: 
@@ -13778,11 +13778,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 61755eb402e87ff4685a62d6b985c339, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  quadPrefab: {fileID: 1353966343}
+  quadPrefab: {fileID: 7259800656932929566, guid: 488b2fd6d589ddd468d119757e2235bb, type: 3}
   viveTracker: {fileID: 6694995748491470288}
   width: 1.75
   height: 1
   trackerAboveBottom: 0.035
+  rotationOffset: {x: 0, y: 0, z: 0}
   spawnKey: 32
 --- !u!4 &1353966345
 Transform:
@@ -23320,7 +23321,7 @@ AudioListener:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8123388066166605676}
-  m_Enabled: 1
+  m_Enabled: 0
 --- !u!33 &4573210726296295775
 MeshFilter:
   m_ObjectHideFlags: 0

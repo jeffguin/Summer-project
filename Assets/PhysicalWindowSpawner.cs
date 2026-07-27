@@ -27,6 +27,13 @@ public class PhysicalWindowSpawner : MonoBehaviour
     private float trackerAboveBottom = 0.035f;
 
 
+    [Header("Quad Rotation Correction")]
+
+    [Tooltip("Additional rotation applied after calculating the quad orientation from the tracker.")]
+    [SerializeField]
+    private Vector3 rotationOffset;
+
+
     [Header("Keyboard Input")]
 
     [SerializeField]
@@ -64,54 +71,46 @@ public class PhysicalWindowSpawner : MonoBehaviour
         }
 
 
-        // --------------------------------------------------
-        // 1. Calculate the desired bottom-centre position
-        // --------------------------------------------------
 
-        // The Vive Tracker is positioned 3.5 cm above
-        // the centre of the quad's bottom edge.
+        // 1Calculate the desired bottom-centre position
 
         Vector3 desiredBottomCenter =
             viveTracker.position
             - Vector3.up * trackerAboveBottom;
 
 
-        // --------------------------------------------------
-        // 2. Calculate the quad's rotation
-        // --------------------------------------------------
-
-        // Vive Tracker local +Y becomes the quad's forward direction.
+  
+        //  quad's forward direction
+        // Tracker local +Y becomes the quad's forward direction.
 
         Vector3 quadForward =
             viveTracker.up;
 
 
-        // Keep the quad's up direction aligned with world up.
 
-        Vector3 quadUp =
-            Vector3.up;
-
-
-        Quaternion quadRotation =
+        // Calculate  base quad rotation
+        Quaternion baseRotation =
             Quaternion.LookRotation(
                 quadForward,
-                quadUp
+                Vector3.up
             );
 
+        //  Apply new rotation
+        Quaternion finalRotation =
+            baseRotation
+            * Quaternion.Euler(rotationOffset);
 
-        // --------------------------------------------------
-        // 3. Spawn the new window
-        // --------------------------------------------------
 
+   
+        // Spawn the new window
         GameObject newWindow =
             Instantiate(
                 quadPrefab
             );
 
 
-        // --------------------------------------------------
-        // 4. Apply the desired size
-        // --------------------------------------------------
+
+        // apply target size
 
         WindowPrefabScript physicalWindow =
             newWindow.GetComponent<WindowPrefabScript>();
@@ -126,10 +125,6 @@ public class PhysicalWindowSpawner : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning(
-                "PhysicalWindowSpawner: WindowPrefabScript is missing from the prefab. Applying scale directly."
-            );
-
             newWindow.transform.localScale =
                 new Vector3(
                     width,
@@ -139,21 +134,12 @@ public class PhysicalWindowSpawner : MonoBehaviour
         }
 
 
-        // --------------------------------------------------
-        // 5. Apply the desired rotation
-        // --------------------------------------------------
-
+        // FINAL rotation
         newWindow.transform.rotation =
-            quadRotation;
+            finalRotation;
 
 
-        // --------------------------------------------------
-        // 6. Find the quad's bottom-centre
-        // --------------------------------------------------
-
-        // A standard Unity Quad is 1 x 1 metres
-        // and its origin is at its centre.
-
+        // Find  quad's bottom-centre
         Vector3 bottomCenterLocal =
             new Vector3(
                 0f,
@@ -168,11 +154,7 @@ public class PhysicalWindowSpawner : MonoBehaviour
             );
 
 
-        // --------------------------------------------------
-        // 7. Move the quad so its bottom-centre is
-        //    exactly 3.5 cm below the Vive Tracker
-        // --------------------------------------------------
-
+        // lastly Position quad
         newWindow.transform.position +=
             desiredBottomCenter
             - currentBottomCenter;
