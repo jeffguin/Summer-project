@@ -8,20 +8,20 @@ public class ArduinoController : MonoBehaviour
     [SerializeField] private GameObject sweetPrefab;
     [SerializeField] private Transform spawnPoint;
 
+    bool canRotate = true;
     void Start()
     {
         serial.Open();
         serial.ReadTimeout = 50;
     }
 
-
     void Update()
     {
         // Unity > Arduino
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.Q))
         {
-            serial.Write("1");
+            ArduinoButtonPressed();
         }
 
         if (Input.GetKeyDown(KeyCode.W))
@@ -38,6 +38,7 @@ public class ArduinoController : MonoBehaviour
         {
             serial.Write("4");
         }
+
         // Arduino > Unity
 
         if (serial.IsOpen)
@@ -50,34 +51,45 @@ public class ArduinoController : MonoBehaviour
                 {
                     ArduinoButtonPressed();
                 }
+
+                else if(message == "ROTATE_COMPLETE")
+                {
+                    canRotate = true;
+                }
             }
             catch
             {
-
+                // Ignore timeout exceptions
             }
         }
     }
-
 
     private void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Sweet"))
         {
-            serial.Write("1");
+            serial.Write("2");
             Destroy(other.gameObject);
         }
     }
 
     void ArduinoButtonPressed()
     {
-        Debug.Log("Arduino button pressed!");
-        Instantiate(sweetPrefab, spawnPoint.position, Quaternion.identity);
-    }
+        if(canRotate)
+        {
+            Debug.Log("Arduino button pressed!");
 
+            Instantiate(sweetPrefab, spawnPoint.position, sweetPrefab.transform.rotation);
+
+            canRotate = false;
+        }   
+    }
 
     void OnApplicationQuit()
     {
         if (serial.IsOpen)
+        {
             serial.Close();
+        }
     }
 }
