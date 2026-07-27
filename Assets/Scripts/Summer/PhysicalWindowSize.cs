@@ -5,7 +5,7 @@ using UnityEngine;
 public class PhysicalWindowSize : MonoBehaviour
 {
     [Header("Window Size (meters)")]
-    // Home default value: 60cm x 30cm
+    // jeffrey home pc screen default value: 60cm x 30cm
     public float width = 0.6f;
     public float height = 0.3f;
 
