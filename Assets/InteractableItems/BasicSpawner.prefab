@@ -1,0 +1,82 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3912116459845874707
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 592987943011475114}
+  - component: {fileID: 1218710625663710777}
+  m_Layer: 0
+  m_Name: BasicSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &592987943011475114
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3912116459845874707}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 1.406729, y: 2.839176, z: 0.12444866}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1218710625663710777
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3912116459845874707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1631189d48eb56428d39cdeb3925bae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _autoStart: 0
+  _autoStartAsActorHost: 1
+  _retryClientJoin: 1
+  _clientRetryDelay: 3
+  _maxClientRetryCount: 0
+  _actorAvatarPrefab:
+    RawGuidValue: 00000000000000000000000000000000
+  _webRtcSignalHubPrefab:
+    RawGuidValue: 00000000000000000000000000000000
+  _networkWebcamControlHubPrefab:
+    RawGuidValue: 00000000000000000000000000000000
+  _actorSpawnPoint: {fileID: 0}
+  _actorLocalRig: {fileID: 0}
+  _audienceFishTankRig: {fileID: 0}
+  _performerMenu: {fileID: 0}
+  _webcamManager: {fileID: 0}
+  _audienceWebRtcSender: {fileID: 0}
+  _audienceWebcamRuntime: {fileID: 0}
+  _actorWebRtcReceiver: {fileID: 0}
+  _webcamScreen: {fileID: 0}
+  _actorHeadSource: {fileID: 0}
+  _actorLeftHandSource: {fileID: 0}
+  _actorRightHandSource: {fileID: 0}
+  _sessionName: TestRoom
+  _sceneBuildIndex: 0
+  _debugInteractableSpawning: 1
+  _verboseInteractableSpawning: 1
+  _networkInteractableSpawnItems:
+  - name: Sweet
+    prefab:
+      RawGuidValue: b4352d0f2625e414696bb8e070184605
+    spawnPoint: {fileID: 0}
+    fallbackPosition: {x: 0, y: 0, z: 0}
+    fallbackEulerAngles: {x: 0, y: 0, z: 0}
+    spawnOnActorHostStart: 0
+    assignInputAuthorityToActor: 0
