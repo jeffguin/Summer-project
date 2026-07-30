@@ -1,4 +1,3 @@
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,14 +8,8 @@ using UnityEngine.UI;
 public class PerformerObjectControlPanel : MonoBehaviour
 {
     [Header("Reset All UI")]
-    [Tooltip("可选的按钮样式模板。未指定时会查找同级 StopButton。")]
-    [SerializeField] private Button buttonTemplate;
-
-    [Tooltip("可预先指定 Reset All 按钮；未指定时会在运行时从模板复制。")]
+    [Tooltip("Actor 场景 Canvas 中预先创建的 Reset All 按钮。")]
     [SerializeField] private Button resetAllButton;
-
-    [SerializeField] private Vector2 resetButtonAnchoredPosition =
-        new Vector2(203f, -150f);
 
     [Header("Actor Host")]
     [SerializeField] private BasicSpawner basicSpawner;
@@ -28,9 +21,14 @@ public class PerformerObjectControlPanel : MonoBehaviour
 
     private void Awake()
     {
-        CreateResetAllButtonIfNeeded();
-
-        if (resetAllButton != null)
+        if (resetAllButton == null)
+        {
+            Debug.LogError(
+                "PerformerObjectControlPanel: Reset All button is not assigned. " +
+                "Add the button to the Actor scene Canvas and assign it in the Inspector."
+            );
+        }
+        else
         {
             resetAllButton.onClick.RemoveListener(OnResetAllClicked);
             resetAllButton.onClick.AddListener(OnResetAllClicked);
@@ -58,59 +56,6 @@ public class PerformerObjectControlPanel : MonoBehaviour
         if (resetAllButton != null)
         {
             resetAllButton.onClick.RemoveListener(OnResetAllClicked);
-        }
-    }
-
-    private void CreateResetAllButtonIfNeeded()
-    {
-        if (resetAllButton == null)
-        {
-            Transform existingButton = transform.Find("ResetAllObjectsButton");
-
-            if (existingButton != null)
-            {
-                resetAllButton = existingButton.GetComponent<Button>();
-            }
-        }
-
-        if (resetAllButton == null && buttonTemplate == null)
-        {
-            Transform stopButton = transform.Find("StopButton");
-
-            if (stopButton != null)
-            {
-                buttonTemplate = stopButton.GetComponent<Button>();
-            }
-        }
-
-        if (resetAllButton == null && buttonTemplate != null)
-        {
-            resetAllButton = Instantiate(buttonTemplate, buttonTemplate.transform.parent);
-            resetAllButton.gameObject.name = "ResetAllObjectsButton";
-            resetAllButton.onClick = new Button.ButtonClickedEvent();
-        }
-
-        if (resetAllButton == null)
-        {
-            Debug.LogError(
-                "PerformerObjectControlPanel: Unable to create Reset All button. " +
-                "Assign a Button template in the performer menu prefab."
-            );
-            return;
-        }
-
-        RectTransform buttonRect = resetAllButton.transform as RectTransform;
-
-        if (buttonRect != null)
-        {
-            buttonRect.anchoredPosition = resetButtonAnchoredPosition;
-        }
-
-        TMP_Text buttonLabel = resetAllButton.GetComponentInChildren<TMP_Text>(true);
-
-        if (buttonLabel != null)
-        {
-            buttonLabel.text = "Reset All";
         }
     }
 

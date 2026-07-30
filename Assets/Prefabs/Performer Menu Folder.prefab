@@ -1601,7 +1601,6 @@ GameObject:
   - component: {fileID: 3090949835287576288}
   - component: {fileID: 339645461235429157}
   - component: {fileID: 6554048833973298224}
-  - component: {fileID: 7742008149915210331}
   - component: {fileID: 4377533401309520917}
   m_Layer: 5
   m_Name: Performer menu Canvas
@@ -1714,23 +1713,6 @@ MonoBehaviour:
   startButton: {fileID: 9079864758799244280}
   stopButton: {fileID: 9084661940298505932}
   selectedCameraIndex: 0
---- !u!114 &7742008149915210331
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3518507716915842755}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b0f4c1a2d3e44950a6b7c8d9e0f1a234, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  buttonTemplate: {fileID: 9084661940298505932}
-  resetAllButton: {fileID: 0}
-  resetButtonAnchoredPosition: {x: 203, y: -150}
-  basicSpawner: {fileID: 0}
-  refreshInterval: 0.25
 --- !u!114 &4377533401309520917
 MonoBehaviour:
   m_ObjectHideFlags: 0
