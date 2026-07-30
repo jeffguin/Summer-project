@@ -30,6 +30,10 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     [Tooltip("释放后短暂冷却，防止同一帧或相邻帧重复 grab。调试阶段可设为 0 或 0.05。")]
     [SerializeField] private float releaseCooldown = 0.05f;
 
+    [Header("Reset Settings")]
+    [Tooltip("Reset All 后短暂阻止重新抓取，避免重置前的残留输入在下一帧重新占用物体。")]
+    [SerializeField] private float resetCooldown = 0.25f;
+
     [Header("Debug")]
     [SerializeField] private bool debugLog = true;
     [SerializeField] private bool debugMoveLog = false;
@@ -48,6 +52,7 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     private Vector3 estimatedVelocity;
     private Vector3 estimatedAngularVelocity;
 
+    private NetworkTransform networkTransform;
     private int moveDebugCounter = 0;
 
     public GrabRole CurrentGrabRole => (GrabRole)GrabbedByRoleValue;
@@ -63,6 +68,11 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         {
             interactionAudio = GetComponent<NetworkInteractionAudio>();
         }
+
+        if (networkTransform == null)
+        {
+            networkTransform = GetComponent<NetworkTransform>();
+        }
     }
 
     public override void Spawned()
@@ -75,6 +85,11 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         if (interactionAudio == null)
         {
             interactionAudio = GetComponent<NetworkInteractionAudio>();
+        }
+
+        if (networkTransform == null)
+        {
+            networkTransform = GetComponent<NetworkTransform>();
         }
 
         TargetPosition = transform.position;
@@ -383,6 +398,74 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
                 NetworkInteractionAudio.InteractionSoundType.Release
             );
         }
+    }
+
+    /// <summary>
+    /// 由 State Authority 强制结束当前抓取，并把原 NetworkObject Teleport 回生成位姿。
+    /// 此操作保留 NetworkId，不执行 Despawn / Respawn。
+    /// </summary>
+    public bool ForceResetToPose(Vector3 resetPosition, Quaternion resetRotation)
+    {
+        if (Object == null || !Object.IsValid || !Object.HasStateAuthority)
+        {
+            Debug.LogWarning(
+                $"[NetworkPhysicalGrabbable] {gameObject.name}: " +
+                "ForceResetToPose ignored because this peer is not State Authority."
+            );
+            return false;
+        }
+
+        IsGrabbed = false;
+        GrabbedByPlayer = default;
+        GrabbedByRoleValue = (int)GrabRole.None;
+
+        TargetPosition = resetPosition;
+        TargetRotation = resetRotation;
+
+        ReleaseCooldownTimer = resetCooldown > 0f
+            ? TickTimer.CreateFromSeconds(Runner, resetCooldown)
+            : TickTimer.None;
+
+        lastPosition = resetPosition;
+        lastRotation = resetRotation;
+        estimatedVelocity = Vector3.zero;
+        estimatedAngularVelocity = Vector3.zero;
+        moveDebugCounter = 0;
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        if (networkTransform == null)
+        {
+            networkTransform = GetComponent<NetworkTransform>();
+        }
+
+        if (networkTransform != null)
+        {
+            networkTransform.Teleport(resetPosition, resetRotation);
+        }
+        else
+        {
+            transform.SetPositionAndRotation(resetPosition, resetRotation);
+        }
+
+        if (rb != null)
+        {
+            rb.position = resetPosition;
+            rb.rotation = resetRotation;
+        }
+
+        DebugMessage(
+            $"Force reset completed. Position={resetPosition}, " +
+            $"Rotation={resetRotation.eulerAngles}, Cooldown={resetCooldown}"
+        );
+
+        return true;
     }
 
     public bool IsControlledBy(PlayerRef player, GrabRole role)

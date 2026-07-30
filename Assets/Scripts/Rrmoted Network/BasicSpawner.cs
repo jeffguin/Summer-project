@@ -7,6 +7,18 @@ using UnityEngine;
 
 public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 {
+    private readonly struct InteractableResetPose
+    {
+        public InteractableResetPose(Vector3 position, Quaternion rotation)
+        {
+            Position = position;
+            Rotation = rotation;
+        }
+
+        public Vector3 Position { get; }
+        public Quaternion Rotation { get; }
+    }
+
     private enum LocalRole
     {
         None,
@@ -129,6 +141,9 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     private readonly Dictionary<int, NetworkObject> _spawnedInteractableObjects =
         new Dictionary<int, NetworkObject>();
 
+    private readonly Dictionary<int, InteractableResetPose> _interactableResetPoses =
+        new Dictionary<int, InteractableResetPose>();
+
     private LocalRole _localRole = LocalRole.None;
 
     private int _clientRetryCount = 0;
@@ -136,6 +151,30 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
     private readonly Dictionary<PlayerRef, NetworkObject> _spawnedObjects =
         new Dictionary<PlayerRef, NetworkObject>();
+
+    public bool IsActorHostReadyForObjectReset =>
+        _localRole == LocalRole.ActorHost &&
+        _runner != null &&
+        _runner.IsRunning &&
+        _runner.IsServer;
+
+    public int SpawnedNetworkInteractableCount
+    {
+        get
+        {
+            int validObjectCount = 0;
+
+            foreach (NetworkObject networkObject in _spawnedInteractableObjects.Values)
+            {
+                if (networkObject != null && networkObject.IsValid)
+                {
+                    validObjectCount++;
+                }
+            }
+
+            return validObjectCount;
+        }
+    }
 
     private void DebugSpawn(string message)
     {
@@ -315,6 +354,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         _networkWebcamControlHubObject = null;
         _actorAvatarObject = null;
         _spawnedInteractableObjects.Clear();
+        _interactableResetPoses.Clear();
         _spawnedObjects.Clear();
     }
 
@@ -846,12 +886,83 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         }
 
         _spawnedInteractableObjects[itemIndex] = spawnedObject;
+        _interactableResetPoses[itemIndex] =
+            new InteractableResetPose(spawnPosition, spawnRotation);
 
         Debug.Log(
             $"BasicSpawner: Network interactable spawned. " +
             $"Index: {itemIndex}, Name: {itemName}, Object: {spawnedObject.name}, " +
             $"Position: {spawnedObject.transform.position}, Rotation: {spawnedObject.transform.rotation.eulerAngles}"
         );
+    }
+
+    /// <summary>
+    /// 演员 Host 的日常恢复入口。保留原 NetworkObject / NetworkId，
+    /// 由 State Authority 强制释放并 Teleport 回首次生成位姿。
+    /// </summary>
+    /// <returns>成功重置的网络交互物体数量。</returns>
+    public int ResetAllNetworkInteractables()
+    {
+        if (!IsActorHostReadyForObjectReset)
+        {
+            Debug.LogWarning(
+                "BasicSpawner: Reset All ignored. " +
+                "Only the running Actor Host / State Authority can reset interactable objects."
+            );
+            return 0;
+        }
+
+        int resetCount = 0;
+
+        foreach (KeyValuePair<int, NetworkObject> spawnedEntry in _spawnedInteractableObjects)
+        {
+            int itemIndex = spawnedEntry.Key;
+            NetworkObject networkObject = spawnedEntry.Value;
+
+            if (networkObject == null || !networkObject.IsValid)
+            {
+                Debug.LogWarning(
+                    $"BasicSpawner: Reset All skipped item index {itemIndex} " +
+                    "because its NetworkObject is no longer valid."
+                );
+                continue;
+            }
+
+            if (!_interactableResetPoses.TryGetValue(
+                    itemIndex,
+                    out InteractableResetPose resetPose))
+            {
+                Debug.LogWarning(
+                    $"BasicSpawner: Reset All skipped '{networkObject.name}' " +
+                    "because its initial spawn pose was not recorded."
+                );
+                continue;
+            }
+
+            NetworkPhysicalGrabbable grabbable =
+                networkObject.GetComponent<NetworkPhysicalGrabbable>();
+
+            if (grabbable == null)
+            {
+                Debug.LogWarning(
+                    $"BasicSpawner: Reset All skipped '{networkObject.name}' " +
+                    "because it has no NetworkPhysicalGrabbable component."
+                );
+                continue;
+            }
+
+            if (grabbable.ForceResetToPose(resetPose.Position, resetPose.Rotation))
+            {
+                resetCount++;
+            }
+        }
+
+        Debug.Log(
+            $"BasicSpawner: Reset All completed. " +
+            $"Reset={resetCount}, Tracked={_spawnedInteractableObjects.Count}."
+        );
+
+        return resetCount;
     }
 
     private string GetInteractableName(NetworkInteractableSpawnItem item, int itemIndex)
