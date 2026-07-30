@@ -8,13 +8,11 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Jacket
-  m_Shader: {fileID: 4800000, guid: 2fbcc86ab1452f94a919d19a83abf926, type: 3}
+  m_Shader: {fileID: 4800000, guid: 650dd9526735d5b46b79224bc6e94025, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
-  - _SPECULAR_AFFECT_BY_NDOTL
-  m_InvalidKeywords:
-  - VIGNETTE_MASKED
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -22,7 +20,9 @@ Material:
   stringTagMap:
     OptimizedShaderFolder: Jacket
     OriginalShader: ".poiyomi/\u2022 Poiyomi Toon \u2022"
-  disabledShaderPasses: []
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -65,6 +65,10 @@ Material:
         m_Offset: {x: 0, y: 0}
     - _BackFaceTexture:
         m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BaseMap:
+        m_Texture: {fileID: 2800000, guid: 7fb16fb6493f11f488c5f6ef3e79c0e1, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _BlueTexture:
@@ -434,6 +438,8 @@ Material:
     - _2ndShadeMapMask_Inverse: 0
     - _2nd_ShadeMapUV: 0
     - _AOStrength: 1
+    - _AddPrecomputedVelocity: 0
+    - _AlphaClip: 0
     - _AlphaMod: 0
     - _AlphaPremultiply: 0
     - _AlphaToMask: 0
@@ -527,6 +533,7 @@ Material:
     - _BackFaceTextureUV: 0
     - _BaseColor_Step: 0.5
     - _BaseShade_Feather: 0.0001
+    - _Blend: 0
     - _BlendOp: 0
     - _BlendOpAlpha: 0
     - _BumpMapUV: 0
@@ -654,6 +661,7 @@ Material:
     - _DitherGradient: 0.1
     - _DitheringEnabled: 0
     - _DstBlend: 0
+    - _DstBlendAlpha: 0
     - _Emission1CenterOutAddAudioLinkwidth: 1
     - _Emission1CenterOutAudioLinkWidth: 1
     - _EmissionBaseColorAsMap: 0
@@ -943,6 +951,7 @@ Material:
     - _PathingMapUV: 0
     - _PatreonHelpBox: 0
     - _Power: 0.25
+    - _QueueOffset: 0
     - _RGBAlpha_UV: 0
     - _RGBBlendMultiplicative: 0
     - _RGBBlue_UV: 0
@@ -987,6 +996,7 @@ Material:
     - _SSSSCale: 0.25
     - _SSSThicknessMapUV: 0
     - _SSSThicknessMod: 0
+    - _SampleGI: 0
     - _SampleWorld: 0
     - _Saturation: 0
     - _ScrollingEmission: 0
@@ -1046,6 +1056,7 @@ Material:
     - _SpecularType1: 1
     - _SpecularityNDotL: 1
     - _SrcBlend: 1
+    - _SrcBlendAlpha: 1
     - _SssBumpBlur: 0.7
     - _SssScale: 1
     - _StencilComp: 3
@@ -1057,6 +1068,7 @@ Material:
     - _StencilValue: 0
     - _StencilWriteMask: 255
     - _StencilZFailOp: 0
+    - _Surface: 0
     - _TextEnabled: 0
     - _TextFPSEmissionStrength: 0
     - _TextFPSEnabled: 0
@@ -1369,6 +1381,7 @@ Material:
     - _BRDFSpecularMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _BackFaceColor: {r: 1, g: 1, b: 1, a: 1}
     - _BackFacePanning: {r: 0, g: 0, b: 0, a: 0}
+    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _BlueColor: {r: 1, g: 1, b: 1, a: 1}
     - _BumpMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _ClearcoatMapPan: {r: 0, g: 0, b: 0, a: 0}
@@ -1531,3 +1544,16 @@ Material:
     - _VertexManipulationWorldTranslation: {r: 0, g: 0, b: 0, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
+--- !u!114 &1584871644707710504
+MonoBehaviour:
+  m_ObjectHideFlags: 11
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0353a89b1f911e48b9e16bdc9f2e058, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 10
