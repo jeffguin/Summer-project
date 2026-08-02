@@ -171,7 +171,6 @@ public class WebRtcSignalHub : NetworkBehaviour
 
             RPC_SendSignalChunk(
                 target,
-                Runner.LocalPlayer,
                 type,
                 signalId,
                 i,
@@ -181,19 +180,35 @@ public class WebRtcSignalHub : NetworkBehaviour
         }
     }
 
-    [Rpc(RpcSources.All, RpcTargets.All)]
+    [Rpc(
+        sources: RpcSources.All,
+        targets: RpcTargets.All,
+        TickAligned = false,
+        HostMode = RpcHostMode.SourceIsHostPlayer
+    )]
     private void RPC_SendSignalChunk(
         PlayerRef target,
-        PlayerRef from,
         string type,
         int signalId,
         int chunkIndex,
         int totalChunks,
-        string chunk)
+        string chunk,
+        RpcInfo info = default)
     {
         if (Runner == null)
         {
             Debug.LogWarning("WebRtcSignalHub: RPC received but Runner is null. Type = " + type);
+            return;
+        }
+
+        PlayerRef from = info.Source;
+
+        if (from == PlayerRef.None)
+        {
+            Debug.LogWarning(
+                "WebRtcSignalHub: RPC source is None. Type = " + type +
+                ", SignalId = " + signalId
+            );
             return;
         }
 

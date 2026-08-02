@@ -1,3 +1,5 @@
+using System;
+using Fusion;
 using UnityEngine;
 
 public class AudienceWebcamRuntime : MonoBehaviour
@@ -17,7 +19,7 @@ public class AudienceWebcamRuntime : MonoBehaviour
         return webcamManager.GetCameraNames();
     }
 
-    public void StartAudienceVideo(int cameraIndex)
+    public void StartAudienceVideo(string sessionId, PlayerRef actorPlayer, int cameraIndex)
     {
         if (webcamManager == null || webRtcSender == null)
         {
@@ -25,10 +27,33 @@ public class AudienceWebcamRuntime : MonoBehaviour
             return;
         }
 
-        Debug.Log("AudienceWebcamRuntime: Start audience video. Camera index: " + cameraIndex);
+        Debug.Log(
+            "AudienceWebcamRuntime: Start audience video. Camera index: " + cameraIndex +
+            ", Session: " + sessionId +
+            ", Actor: " + actorPlayer
+        );
 
-        webcamManager.StartCameraByIndex(cameraIndex);
-        webRtcSender.StartWebcamStream();
+        webRtcSender.StartWebcamStream(sessionId, actorPlayer, cameraIndex);
+    }
+
+    // Compatibility entry point for optional local/test callers. Network control
+    // should use the overload with an Actor-created session id and explicit target.
+    public void StartAudienceVideo(int cameraIndex)
+    {
+        if (WebRtcSignalHub.Instance == null)
+        {
+            Debug.LogWarning("AudienceWebcamRuntime: SignalHub is unavailable.");
+            return;
+        }
+
+        PlayerRef actorPlayer = WebRtcSignalHub.Instance.GetOtherPlayer();
+        if (actorPlayer == PlayerRef.None)
+        {
+            Debug.LogWarning("AudienceWebcamRuntime: Actor player is unavailable.");
+            return;
+        }
+
+        StartAudienceVideo(Guid.NewGuid().ToString("N"), actorPlayer, cameraIndex);
     }
 
     public void StopAudienceVideo()
@@ -41,7 +66,15 @@ public class AudienceWebcamRuntime : MonoBehaviour
 
         Debug.Log("AudienceWebcamRuntime: Stop audience video.");
 
-        webRtcSender.StopWebcamStream();
-        webcamManager.StopWebcam();
+        webRtcSender.RequestStopWebcamStream();
+    }
+
+    public void ForceStopAudienceVideo()
+    {
+        if (webRtcSender != null)
+            webRtcSender.ForceStopWebcamStream();
+
+        if (webcamManager != null)
+            webcamManager.StopWebcam();
     }
 }

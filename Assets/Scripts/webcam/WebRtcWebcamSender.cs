@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Fusion;
@@ -6,8 +6,31 @@ using Unity.WebRTC;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class WebRtcWebcamSender : MonoBehaviour
+[DisallowMultipleComponent]
+public sealed class WebRtcWebcamSender : MonoBehaviour
 {
+    public enum SessionState
+    {
+        Idle,
+        WaitingForSignalHub,
+        PreparingDevice,
+        LocalTrackReady,
+        Negotiating,
+        Connecting,
+        Connected,
+        Recovering,
+        Stopping,
+        Failed
+    }
+
+    public const string OfferType = "video.offer";
+    public const string AnswerType = "video.answer";
+    public const string CandidateType = "video.ice";
+    public const string ConnectedType = "video.session.connected";
+    public const string StopType = "video.session.stop";
+    public const string StopAckType = "video.session.stop.ack";
+    public const string ErrorType = "video.error";
+
     [Header("References")]
     [SerializeField] private LocalWebcamManager localWebcamManager;
 
@@ -16,78 +39,171 @@ public class WebRtcWebcamSender : MonoBehaviour
 
     [Header("ICE / STUN / TURN Settings")]
     [SerializeField] private bool useGoogleStun = true;
-
-    [Tooltip("如果你已经有 TURN 服务器，就打开这个。")]
     [SerializeField] private bool useTurn = false;
-
-    [Tooltip("例如：turn:123.123.123.123:3478?transport=udp")]
     [SerializeField] private string turnUrlUdp = "turn:YOUR_TURN_SERVER:3478?transport=udp";
-
-    [Tooltip("例如：turn:123.123.123.123:3478?transport=tcp")]
     [SerializeField] private string turnUrlTcp = "turn:YOUR_TURN_SERVER:3478?transport=tcp";
-
     [SerializeField] private string turnUsername = "YOUR_USERNAME";
     [SerializeField] private string turnCredential = "YOUR_PASSWORD";
 
+    [Header("Timeouts")]
+    [SerializeField] private float cameraReadyTimeoutSeconds = 5f;
+    [SerializeField] private float cameraStallTimeoutSeconds = 5f;
+    [SerializeField] private float connectionTimeoutSeconds = 20f;
+    [SerializeField] private float disconnectedGraceSeconds = 3f;
+    [SerializeField] private float stopAckTimeoutSeconds = 2f;
+
     private RTCPeerConnection peerConnection;
     private VideoStreamTrack videoTrack;
-    private Coroutine startRoutine;
+    private RTCRtpSender localVideoSender;
+    private Coroutine operationCoroutine;
+    private Coroutine signalHubCoroutine;
+    private Coroutine connectionTimeoutCoroutine;
+    private Coroutine disconnectedCoroutine;
+    private Coroutine stopAckCoroutine;
 
-    private bool remoteDescriptionSet = false;
-    private bool isStreaming = false;
-    private bool isStarting = false;
+    private bool signalHubSubscribed;
+    private bool remoteDescriptionSet;
+    private bool iceConnected;
+    private bool remoteFrameConfirmed;
+    private bool isCleaningUp;
+    private float lastCameraFrameTime;
+    private string activeSessionId = "";
+    private PlayerRef remotePlayer = PlayerRef.None;
 
-    private readonly List<IceSignal> pendingRemoteCandidates = new List<IceSignal>();
+    private readonly Queue<IceSignal> pendingRemoteCandidates = new Queue<IceSignal>();
+
+    public event Action<SessionState, string> StateChanged;
+
+    public SessionState State { get; private set; } = SessionState.Idle;
+    public string ActiveSessionId => activeSessionId;
+    public PlayerRef RemotePlayer => remotePlayer;
+    public bool IsConnected => State == SessionState.Connected;
 
     [Serializable]
-    private class SdpSignal
+    private sealed class SessionSignal
     {
+        public string sessionId;
         public string sdp;
+        public string errorCode;
+        public string message;
     }
 
     [Serializable]
-    private class IceSignal
+    private sealed class IceSignal
     {
+        public string sessionId;
         public string candidate;
         public string sdpMid;
         public int sdpMLineIndex;
     }
 
-    private void Start()
+    private void Awake()
     {
-        Debug.Log("WebRtcWebcamSender: Start running on " + Application.platform);
-
         WebRtcRuntimePump.EnsureExists();
 
         if (startStreamButton != null)
-        {
             startStreamButton.onClick.AddListener(StartWebcamStream);
-        }
+    }
 
-        StartCoroutine(WaitForSignalHub());
+    private void OnEnable()
+    {
+        if (signalHubCoroutine == null)
+            signalHubCoroutine = StartCoroutine(WaitForSignalHub());
+    }
+
+    private void Update()
+    {
+        if (string.IsNullOrEmpty(activeSessionId) || localWebcamManager == null)
+            return;
+
+        WebCamTexture webcamTexture = localWebcamManager.GetCurrentWebcamTexture();
+        if (webcamTexture != null && webcamTexture.didUpdateThisFrame)
+            lastCameraFrameTime = Time.realtimeSinceStartup;
+
+        bool shouldMonitorFrames =
+            State == SessionState.LocalTrackReady ||
+            State == SessionState.Negotiating ||
+            State == SessionState.Connecting ||
+            State == SessionState.Connected ||
+            State == SessionState.Recovering;
+
+        if (shouldMonitorFrames &&
+            lastCameraFrameTime > 0f &&
+            Time.realtimeSinceStartup - lastCameraFrameTime > Mathf.Max(1f, cameraStallTimeoutSeconds))
+        {
+            Fail("CameraFrameStalled", "The selected camera stopped producing frames.", true);
+        }
     }
 
     private IEnumerator WaitForSignalHub()
     {
-        Debug.Log("WebRtcWebcamSender: Waiting for WebRtcSignalHub...");
+        SetState(SessionState.WaitingForSignalHub, "Waiting for the Fusion WebRTC signal hub.");
 
         while (WebRtcSignalHub.Instance == null)
-        {
             yield return null;
-        }
 
-        WebRtcSignalHub.Instance.OnSignalReceived += OnSignalReceived;
+        SubscribeToSignalHub();
+        signalHubCoroutine = null;
 
-        Debug.Log("WebRtcWebcamSender: Connected to WebRtcSignalHub.");
+        if (State == SessionState.WaitingForSignalHub)
+            SetState(SessionState.Idle, "Video sender is ready.");
     }
 
+    private void SubscribeToSignalHub()
+    {
+        if (WebRtcSignalHub.Instance == null)
+            return;
+
+        WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
+        WebRtcSignalHub.Instance.OnSignalReceived += OnSignalReceived;
+        signalHubSubscribed = true;
+    }
+
+    // Kept for the optional local test button. The production flow should call
+    // the overload that receives an Actor-created session id and explicit target.
     public void StartWebcamStream()
     {
-        Debug.Log("WebRtcWebcamSender: StartWebcamStream called.");
-
-        if (isStarting || isStreaming)
+        if (WebRtcSignalHub.Instance == null)
         {
-            Debug.LogWarning("WebRtcWebcamSender: Already starting or streaming. Start ignored.");
+            Debug.LogWarning("WebRtcWebcamSender: SignalHub is not ready.");
+            return;
+        }
+
+        PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
+        if (target == PlayerRef.None)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: No receiver player is available.");
+            return;
+        }
+
+        WebCamTexture currentTexture =
+            localWebcamManager != null ? localWebcamManager.GetCurrentWebcamTexture() : null;
+
+        if (currentTexture == null || !currentTexture.isPlaying)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Start the local webcam before using the test button.");
+            return;
+        }
+
+        BeginSession(Guid.NewGuid().ToString("N"), target, -1, false);
+    }
+
+    public void StartWebcamStream(string sessionId, PlayerRef target, int cameraIndex)
+    {
+        BeginSession(sessionId, target, cameraIndex, true);
+    }
+
+    private void BeginSession(string sessionId, PlayerRef target, int cameraIndex, bool startCamera)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Cannot start without a session id.");
+            return;
+        }
+
+        if (target == PlayerRef.None)
+        {
+            Debug.LogWarning("WebRtcWebcamSender: Cannot start without an explicit receiver.");
             return;
         }
 
@@ -97,121 +213,556 @@ public class WebRtcWebcamSender : MonoBehaviour
             return;
         }
 
-        PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
+        if (!signalHubSubscribed)
+            SubscribeToSignalHub();
 
-        if (target == PlayerRef.None)
-        {
-            Debug.LogWarning("WebRtcWebcamSender: No receiver player found.");
-            return;
-        }
+        CleanupLocalSession("Preparing a new video session.", false);
+        activeSessionId = sessionId;
+        remotePlayer = target;
+        operationCoroutine = StartCoroutine(StartSenderRoutine(sessionId, cameraIndex, startCamera));
+    }
+
+    private IEnumerator StartSenderRoutine(string sessionId, int cameraIndex, bool startCamera)
+    {
+        SetState(SessionState.PreparingDevice, "Starting the selected camera.");
 
         if (localWebcamManager == null)
         {
-            Debug.LogWarning("WebRtcWebcamSender: LocalWebcamManager is not assigned.");
-            return;
+            operationCoroutine = null;
+            Fail("CameraManagerMissing", "LocalWebcamManager is not assigned.", true);
+            yield break;
+        }
+
+        if (startCamera && !localWebcamManager.TryStartCameraByIndex(cameraIndex, out string cameraError))
+        {
+            operationCoroutine = null;
+            Fail("CameraStartFailed", cameraError, true);
+            yield break;
         }
 
         WebCamTexture webcamTexture = localWebcamManager.GetCurrentWebcamTexture();
-
         if (webcamTexture == null || !webcamTexture.isPlaying)
         {
-            Debug.LogWarning("WebRtcWebcamSender: WebcamTexture is null or not playing. Start local webcam first.");
-            return;
+            operationCoroutine = null;
+            Fail("CameraNotPlaying", "The selected camera did not start.", true);
+            yield break;
         }
 
-        Debug.Log(
-            "WebRtcWebcamSender: Using webcam texture. " +
-            "Name = " + webcamTexture.deviceName +
-            ", Size = " + webcamTexture.width + "x" + webcamTexture.height
+        float cameraDeadline = Time.realtimeSinceStartup + Mathf.Max(1f, cameraReadyTimeoutSeconds);
+        while (sessionId == activeSessionId &&
+               !localWebcamManager.IsCurrentCameraReady &&
+               Time.realtimeSinceStartup < cameraDeadline)
+        {
+            yield return null;
+        }
+
+        if (sessionId != activeSessionId)
+        {
+            operationCoroutine = null;
+            yield break;
+        }
+
+        if (!localWebcamManager.IsCurrentCameraReady)
+        {
+            operationCoroutine = null;
+            Fail(
+                "CameraReadyTimeout",
+                "The camera did not provide a valid frame before the startup timeout.",
+                true
+            );
+            yield break;
+        }
+
+        lastCameraFrameTime = Time.realtimeSinceStartup;
+
+        if (!CreatePeerConnection())
+        {
+            operationCoroutine = null;
+            Fail("PeerConnectionCreationFailed", "Could not create the video PeerConnection.", true);
+            yield break;
+        }
+
+        try
+        {
+            videoTrack = new VideoStreamTrack(webcamTexture);
+            localVideoSender = peerConnection.AddTrack(videoTrack);
+        }
+        catch (Exception exception)
+        {
+            operationCoroutine = null;
+            Fail("TrackCreationFailed", exception.Message, true);
+            yield break;
+        }
+
+        if (localVideoSender == null)
+        {
+            operationCoroutine = null;
+            Fail("TrackAddFailed", "The video track could not be added to the PeerConnection.", true);
+            yield break;
+        }
+
+        SetState(
+            SessionState.LocalTrackReady,
+            "Camera track is ready: " + localWebcamManager.CurrentDeviceName + "."
         );
 
-        if (peerConnection != null)
+        RTCSessionDescriptionAsyncOperation offerOperation = peerConnection.CreateOffer();
+        yield return offerOperation;
+
+        if (sessionId != activeSessionId)
         {
-            Debug.LogWarning("WebRtcWebcamSender: Existing peerConnection found. Resetting before start.");
-            StopWebcamStream();
-        }
-
-        startRoutine = StartCoroutine(StartSenderRoutine(target, webcamTexture));
-    }
-
-    private IEnumerator StartSenderRoutine(PlayerRef target, WebCamTexture webcamTexture)
-    {
-        isStarting = true;
-        remoteDescriptionSet = false;
-        pendingRemoteCandidates.Clear();
-
-        CreatePeerConnection();
-
-        if (peerConnection == null)
-        {
-            Debug.LogError("WebRtcWebcamSender: Failed to create peerConnection.");
-            isStarting = false;
+            operationCoroutine = null;
             yield break;
         }
 
-        videoTrack = new VideoStreamTrack(webcamTexture);
-        peerConnection.AddTrack(videoTrack);
-
-        Debug.Log("WebRtcWebcamSender: Video track added.");
-
-        RTCSessionDescriptionAsyncOperation offerOp = peerConnection.CreateOffer();
-
-        yield return offerOp;
-
-        if (offerOp.IsError)
+        if (offerOperation.IsError)
         {
-            Debug.LogError("WebRtcWebcamSender: CreateOffer failed: " + offerOp.Error.message);
-            isStarting = false;
-            StopWebcamStream();
+            operationCoroutine = null;
+            Fail("CreateOfferFailed", offerOperation.Error.message, true);
             yield break;
         }
 
-        RTCSessionDescription offer = offerOp.Desc;
-
-        RTCSetSessionDescriptionAsyncOperation localOp =
+        RTCSessionDescription offer = offerOperation.Desc;
+        RTCSetSessionDescriptionAsyncOperation localOperation =
             peerConnection.SetLocalDescription(ref offer);
+        yield return localOperation;
 
-        yield return localOp;
-
-        if (localOp.IsError)
+        if (sessionId != activeSessionId)
         {
-            Debug.LogError("WebRtcWebcamSender: SetLocalDescription offer failed: " + localOp.Error.message);
-            isStarting = false;
-            StopWebcamStream();
+            operationCoroutine = null;
             yield break;
         }
 
-        Debug.Log("WebRtcWebcamSender: Local offer applied.");
-
-        SdpSignal signal = new SdpSignal
+        if (localOperation.IsError)
         {
+            operationCoroutine = null;
+            Fail("SetLocalOfferFailed", localOperation.Error.message, true);
+            yield break;
+        }
+
+        SessionSignal signal = new SessionSignal
+        {
+            sessionId = activeSessionId,
             sdp = offer.sdp
         };
 
-        string json = JsonUtility.ToJson(signal);
+        if (!SendJson(remotePlayer, OfferType, JsonUtility.ToJson(signal)))
+        {
+            operationCoroutine = null;
+            Fail("SignalHubUnavailable", "The video offer could not be sent.", false);
+            yield break;
+        }
 
-        Debug.Log("WebRtcWebcamSender: Sending offer. Payload length: " + json.Length);
+        operationCoroutine = null;
+        SetState(SessionState.Negotiating, "Video offer sent; waiting for the Actor answer.");
+        StartConnectionTimeout(sessionId);
+    }
 
-        WebRtcSignalHub.Instance.SendSignal(target, "video.offer", json);
+    private bool CreatePeerConnection()
+    {
+        try
+        {
+            RTCConfiguration configuration = BuildRtcConfiguration();
+            peerConnection = new RTCPeerConnection(ref configuration);
+            ConfigurePeerConnectionCallbacks();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("WebRtcWebcamSender: PeerConnection creation failed: " + exception);
+            return false;
+        }
+    }
 
-        isStarting = false;
-        isStreaming = true;
+    private void ConfigurePeerConnectionCallbacks()
+    {
+        peerConnection.OnIceCandidate = candidate =>
+        {
+            if (candidate == null ||
+                string.IsNullOrEmpty(candidate.Candidate) ||
+                string.IsNullOrEmpty(activeSessionId) ||
+                remotePlayer == PlayerRef.None)
+            {
+                return;
+            }
 
-        Debug.Log("WebRtcWebcamSender: WebRTC offer sent.");
+            LogCandidateType("WebRtcWebcamSender", candidate.Candidate);
+
+            IceSignal signal = new IceSignal
+            {
+                sessionId = activeSessionId,
+                candidate = candidate.Candidate,
+                sdpMid = candidate.SdpMid,
+                sdpMLineIndex = candidate.SdpMLineIndex.HasValue
+                    ? candidate.SdpMLineIndex.Value
+                    : -1
+            };
+
+            SendJson(remotePlayer, CandidateType, JsonUtility.ToJson(signal));
+        };
+
+        peerConnection.OnTrack = trackEvent =>
+        {
+            Debug.LogWarning(
+                "WebRtcWebcamSender: The send-only video connection received an unexpected " +
+                trackEvent.Track.Kind + " track."
+            );
+        };
+
+        peerConnection.OnIceConnectionChange = state =>
+        {
+            if (isCleaningUp)
+                return;
+
+            Debug.Log("WebRtcWebcamSender: ICE state = " + state + ", Session = " + activeSessionId);
+
+            if (state == RTCIceConnectionState.Connected || state == RTCIceConnectionState.Completed)
+            {
+                iceConnected = true;
+                CancelDisconnectedGracePeriod();
+                UpdateConnectedState();
+            }
+            else if (state == RTCIceConnectionState.Disconnected)
+            {
+                iceConnected = false;
+                SetState(SessionState.Recovering, "Video ICE disconnected; waiting for recovery.");
+                StartDisconnectedGracePeriod(activeSessionId);
+            }
+            else if (state == RTCIceConnectionState.Failed)
+            {
+                iceConnected = false;
+                Fail("IceFailed", "Video ICE connection failed.", true);
+            }
+        };
+
+        peerConnection.OnConnectionStateChange = state =>
+        {
+            if (isCleaningUp)
+                return;
+
+            Debug.Log(
+                "WebRtcWebcamSender: PeerConnection state = " + state +
+                ", Session = " + activeSessionId
+            );
+
+            if (state == RTCPeerConnectionState.Failed)
+                Fail("PeerConnectionFailed", "Video PeerConnection entered the Failed state.", true);
+        };
+    }
+
+    private void OnSignalReceived(PlayerRef from, string type, string payload)
+    {
+        if (from != remotePlayer || string.IsNullOrEmpty(activeSessionId))
+            return;
+
+        if (type == AnswerType)
+        {
+            SessionSignal signal = JsonUtility.FromJson<SessionSignal>(payload);
+            if (MatchesActiveSession(signal))
+                StartCoroutine(HandleAnswerRoutine(signal));
+        }
+        else if (type == CandidateType)
+        {
+            HandleRemoteCandidate(JsonUtility.FromJson<IceSignal>(payload));
+        }
+        else if (type == ConnectedType)
+        {
+            SessionSignal signal = JsonUtility.FromJson<SessionSignal>(payload);
+            if (MatchesActiveSession(signal))
+            {
+                remoteFrameConfirmed = true;
+                UpdateConnectedState();
+            }
+        }
+        else if (type == StopType)
+        {
+            SessionSignal signal = JsonUtility.FromJson<SessionSignal>(payload);
+            if (MatchesActiveSession(signal))
+                HandleRemoteStop(from, signal);
+        }
+        else if (type == StopAckType)
+        {
+            SessionSignal signal = JsonUtility.FromJson<SessionSignal>(payload);
+            if (State == SessionState.Stopping && MatchesActiveSession(signal))
+                CleanupLocalSession("Remote endpoint acknowledged the video stop.");
+        }
+        else if (type == ErrorType)
+        {
+            SessionSignal signal = JsonUtility.FromJson<SessionSignal>(payload);
+            if (MatchesActiveSession(signal))
+                Fail(signal.errorCode ?? "RemoteVideoError", signal.message ?? "Remote video failed.", false);
+        }
+    }
+
+    private IEnumerator HandleAnswerRoutine(SessionSignal signal)
+    {
+        if (!MatchesActiveSession(signal) || peerConnection == null || string.IsNullOrEmpty(signal.sdp))
+            yield break;
+
+        RTCSessionDescription answer = new RTCSessionDescription
+        {
+            type = RTCSdpType.Answer,
+            sdp = signal.sdp
+        };
+
+        RTCSetSessionDescriptionAsyncOperation remoteOperation =
+            peerConnection.SetRemoteDescription(ref answer);
+        yield return remoteOperation;
+
+        if (!MatchesActiveSession(signal))
+            yield break;
+
+        if (remoteOperation.IsError)
+        {
+            Fail("SetRemoteAnswerFailed", remoteOperation.Error.message, true);
+            yield break;
+        }
+
+        remoteDescriptionSet = true;
+        FlushPendingRemoteCandidates();
+        SetState(SessionState.Connecting, "Actor answer applied; connecting video ICE.");
+    }
+
+    private void HandleRemoteCandidate(IceSignal signal)
+    {
+        if (signal == null ||
+            string.IsNullOrEmpty(signal.candidate) ||
+            signal.sessionId != activeSessionId)
+        {
+            return;
+        }
+
+        if (peerConnection == null || !remoteDescriptionSet)
+        {
+            pendingRemoteCandidates.Enqueue(signal);
+            return;
+        }
+
+        AddRemoteCandidate(signal);
+    }
+
+    private void FlushPendingRemoteCandidates()
+    {
+        while (pendingRemoteCandidates.Count > 0)
+            AddRemoteCandidate(pendingRemoteCandidates.Dequeue());
+    }
+
+    private void AddRemoteCandidate(IceSignal signal)
+    {
+        if (peerConnection == null || signal.sessionId != activeSessionId)
+            return;
+
+        RTCIceCandidateInit initialization = new RTCIceCandidateInit
+        {
+            candidate = signal.candidate,
+            sdpMid = signal.sdpMid,
+            sdpMLineIndex = signal.sdpMLineIndex >= 0 ? signal.sdpMLineIndex : null
+        };
+
+        peerConnection.AddIceCandidate(new RTCIceCandidate(initialization));
+        LogCandidateType("WebRtcWebcamSender remote", signal.candidate);
+    }
+
+    private bool MatchesActiveSession(SessionSignal signal)
+    {
+        return signal != null &&
+               !string.IsNullOrEmpty(signal.sessionId) &&
+               signal.sessionId == activeSessionId;
+    }
+
+    private void HandleRemoteStop(PlayerRef from, SessionSignal signal)
+    {
+        SendJson(
+            from,
+            StopAckType,
+            JsonUtility.ToJson(new SessionSignal { sessionId = signal.sessionId })
+        );
+
+        CleanupLocalSession("The Actor stopped the video session.");
     }
 
     public void StopWebcamStream()
     {
-        if (startRoutine != null)
+        RequestStopWebcamStream();
+    }
+
+    public void RequestStopWebcamStream()
+    {
+        if (string.IsNullOrEmpty(activeSessionId) || remotePlayer == PlayerRef.None)
         {
-            StopCoroutine(startRoutine);
-            startRoutine = null;
+            CleanupLocalSession("Video sender stopped locally.");
+            return;
         }
 
-        isStarting = false;
-        isStreaming = false;
+        SetState(SessionState.Stopping, "Waiting for the remote endpoint to acknowledge video stop.");
+
+        SendJson(
+            remotePlayer,
+            StopType,
+            JsonUtility.ToJson(new SessionSignal { sessionId = activeSessionId })
+        );
+
+        StartStopAckTimeout(activeSessionId);
+    }
+
+    public void ForceStopWebcamStream()
+    {
+        CleanupLocalSession("Video sender stopped locally.");
+    }
+
+    private void UpdateConnectedState()
+    {
+        if (!iceConnected || !remoteFrameConfirmed || string.IsNullOrEmpty(activeSessionId))
+            return;
+
+        CancelConnectionTimeout();
+        SetState(SessionState.Connected, "Actor confirmed receipt of the first video frame.");
+    }
+
+    private void StartConnectionTimeout(string sessionId)
+    {
+        CancelConnectionTimeout();
+        connectionTimeoutCoroutine = StartCoroutine(ConnectionTimeoutRoutine(sessionId));
+    }
+
+    private IEnumerator ConnectionTimeoutRoutine(string sessionId)
+    {
+        yield return new WaitForSecondsRealtime(Mathf.Max(1f, connectionTimeoutSeconds));
+        connectionTimeoutCoroutine = null;
+
+        if (sessionId == activeSessionId && State != SessionState.Connected)
+            Fail("ConnectionTimeout", "Video did not become ready before the connection timeout.", true);
+    }
+
+    private void CancelConnectionTimeout()
+    {
+        if (connectionTimeoutCoroutine == null)
+            return;
+
+        StopCoroutine(connectionTimeoutCoroutine);
+        connectionTimeoutCoroutine = null;
+    }
+
+    private void StartDisconnectedGracePeriod(string sessionId)
+    {
+        CancelDisconnectedGracePeriod();
+        disconnectedCoroutine = StartCoroutine(DisconnectedGraceRoutine(sessionId));
+    }
+
+    private IEnumerator DisconnectedGraceRoutine(string sessionId)
+    {
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.5f, disconnectedGraceSeconds));
+        disconnectedCoroutine = null;
+
+        if (sessionId == activeSessionId && !iceConnected)
+            Fail("ConnectionLost", "Video connection did not recover after disconnection.", true);
+    }
+
+    private void CancelDisconnectedGracePeriod()
+    {
+        if (disconnectedCoroutine == null)
+            return;
+
+        StopCoroutine(disconnectedCoroutine);
+        disconnectedCoroutine = null;
+    }
+
+    private void StartStopAckTimeout(string sessionId)
+    {
+        if (stopAckCoroutine != null)
+            StopCoroutine(stopAckCoroutine);
+
+        stopAckCoroutine = StartCoroutine(StopAckTimeoutRoutine(sessionId));
+    }
+
+    private IEnumerator StopAckTimeoutRoutine(string sessionId)
+    {
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.5f, stopAckTimeoutSeconds));
+        stopAckCoroutine = null;
+
+        if (sessionId == activeSessionId && State == SessionState.Stopping)
+            CleanupLocalSession("Video stop acknowledgement timed out; local resources were released.");
+    }
+
+    private void Fail(string code, string message, bool notifyRemote)
+    {
+        Debug.LogError("WebRtcWebcamSender: " + code + ": " + message);
+
+        string failedSessionId = activeSessionId;
+        PlayerRef failedRemote = remotePlayer;
+
+        if (notifyRemote && !string.IsNullOrEmpty(failedSessionId) && failedRemote != PlayerRef.None)
+        {
+            SendJson(
+                failedRemote,
+                ErrorType,
+                JsonUtility.ToJson(new SessionSignal
+                {
+                    sessionId = failedSessionId,
+                    errorCode = code,
+                    message = message
+                })
+            );
+        }
+
+        operationCoroutine = null;
+        CancelConnectionTimeout();
+        CancelDisconnectedGracePeriod();
+        CancelStopAckTimeout();
+        ReleaseMediaResources();
+        activeSessionId = "";
+        remotePlayer = PlayerRef.None;
+        SetState(SessionState.Failed, code + ": " + message);
+    }
+
+    private void CleanupLocalSession(string message, bool setIdle = true)
+    {
+        if (State != SessionState.Idle && State != SessionState.WaitingForSignalHub)
+            SetState(SessionState.Stopping, message);
+
+        if (operationCoroutine != null)
+        {
+            StopCoroutine(operationCoroutine);
+            operationCoroutine = null;
+        }
+
+        CancelConnectionTimeout();
+        CancelDisconnectedGracePeriod();
+        CancelStopAckTimeout();
+        ReleaseMediaResources();
+        activeSessionId = "";
+        remotePlayer = PlayerRef.None;
+
+        if (setIdle)
+            SetState(SessionState.Idle, message);
+    }
+
+    private void CancelStopAckTimeout()
+    {
+        if (stopAckCoroutine == null)
+            return;
+
+        StopCoroutine(stopAckCoroutine);
+        stopAckCoroutine = null;
+    }
+
+    private void ReleaseMediaResources()
+    {
+        if (isCleaningUp)
+            return;
+
+        isCleaningUp = true;
         remoteDescriptionSet = false;
+        iceConnected = false;
+        remoteFrameConfirmed = false;
+        lastCameraFrameTime = 0f;
         pendingRemoteCandidates.Clear();
+
+        if (peerConnection != null && localVideoSender != null)
+        {
+            peerConnection.RemoveTrack(localVideoSender);
+            localVideoSender = null;
+        }
 
         if (videoTrack != null)
         {
@@ -226,74 +777,10 @@ public class WebRtcWebcamSender : MonoBehaviour
             peerConnection = null;
         }
 
-        Debug.Log("WebRtcWebcamSender: Stream stopped.");
-    }
+        if (localWebcamManager != null)
+            localWebcamManager.StopWebcam();
 
-    private void CreatePeerConnection()
-    {
-        RTCConfiguration config = BuildRtcConfiguration();
-
-        peerConnection = new RTCPeerConnection(ref config);
-
-        peerConnection.OnIceCandidate = candidate =>
-        {
-            if (candidate == null || string.IsNullOrEmpty(candidate.Candidate))
-                return;
-
-            Debug.Log("WebRtcWebcamSender: Local ICE candidate: " + candidate.Candidate);
-            LogCandidateType("WebRtcWebcamSender", candidate.Candidate);
-
-            if (WebRtcSignalHub.Instance == null)
-            {
-                Debug.LogWarning("WebRtcWebcamSender: SignalHub is null when sending ICE candidate.");
-                return;
-            }
-
-            PlayerRef target = WebRtcSignalHub.Instance.GetOtherPlayer();
-
-            if (target == PlayerRef.None)
-            {
-                Debug.LogWarning("WebRtcWebcamSender: No receiver player found for ICE candidate.");
-                return;
-            }
-
-            IceSignal signal = new IceSignal
-            {
-                candidate = candidate.Candidate,
-                sdpMid = candidate.SdpMid,
-                sdpMLineIndex = candidate.SdpMLineIndex.HasValue
-                    ? candidate.SdpMLineIndex.Value
-                    : -1
-            };
-
-            string json = JsonUtility.ToJson(signal);
-
-            Debug.Log("WebRtcWebcamSender: Sending ICE candidate. Payload length: " + json.Length);
-
-            WebRtcSignalHub.Instance.SendSignal(target, "video.ice", json);
-        };
-
-        peerConnection.OnTrack = e =>
-        {
-            Debug.Log("WebRtcWebcamSender: OnTrack fired. Track kind: " + e.Track.Kind);
-
-            Debug.LogWarning(
-                "WebRtcWebcamSender: Video PeerConnection received an unexpected remote track: " +
-                e.Track.Kind
-            );
-        };
-
-        peerConnection.OnIceConnectionChange = state =>
-        {
-            Debug.Log("WebRtcWebcamSender: ICE state: " + state);
-        };
-
-        peerConnection.OnConnectionStateChange = state =>
-        {
-            Debug.Log("WebRtcWebcamSender: Connection state: " + state);
-        };
-
-        Debug.Log("WebRtcWebcamSender: PeerConnection created.");
+        isCleaningUp = false;
     }
 
     private RTCConfiguration BuildRtcConfiguration()
@@ -304,187 +791,96 @@ public class WebRtcWebcamSender : MonoBehaviour
         {
             iceServers.Add(new RTCIceServer
             {
-                urls = new[]
-                {
-                    "stun:stun.relay.metered.ca:80"
-                }
+                urls = new[] { "stun:stun.relay.metered.ca:80" }
             });
-
-            Debug.Log("WebRtcWebcamSender: Google STUN enabled.");
         }
 
         if (useTurn)
         {
-            iceServers.Add(new RTCIceServer
-            {
-                urls = new[]
-                {
-                    turnUrlUdp,
-                    turnUrlTcp
-                },
-                username = turnUsername,
-                credential = turnCredential
-            });
+            List<string> urls = new List<string>();
+            if (!string.IsNullOrWhiteSpace(turnUrlUdp))
+                urls.Add(turnUrlUdp);
+            if (!string.IsNullOrWhiteSpace(turnUrlTcp))
+                urls.Add(turnUrlTcp);
 
-            Debug.Log(
-                "WebRtcWebcamSender: TURN enabled. " +
-                "UDP = " + turnUrlUdp + ", TCP = " + turnUrlTcp
-            );
+            if (urls.Count > 0)
+            {
+                iceServers.Add(new RTCIceServer
+                {
+                    urls = urls.ToArray(),
+                    username = turnUsername,
+                    credential = turnCredential
+                });
+            }
         }
 
-        RTCConfiguration config = new RTCConfiguration
+        return new RTCConfiguration
         {
             iceServers = iceServers.ToArray()
         };
+    }
 
-        return config;
+    private static bool SendJson(PlayerRef target, string type, string json)
+    {
+        if (WebRtcSignalHub.Instance == null || target == PlayerRef.None)
+            return false;
+
+        WebRtcSignalHub.Instance.SendSignal(target, type, json);
+        return true;
     }
 
     private static void LogCandidateType(string prefix, string candidate)
     {
+        if (string.IsNullOrEmpty(candidate))
+            return;
+
         if (candidate.Contains(" typ relay "))
-        {
             Debug.Log(prefix + ": Candidate type = relay / TURN");
-        }
         else if (candidate.Contains(" typ srflx "))
-        {
             Debug.Log(prefix + ": Candidate type = srflx / STUN");
-        }
         else if (candidate.Contains(" typ host "))
-        {
             Debug.Log(prefix + ": Candidate type = host / local");
-        }
         else
-        {
             Debug.Log(prefix + ": Candidate type = unknown");
-        }
     }
 
-    private void OnSignalReceived(PlayerRef from, string type, string payload)
+    private void SetState(SessionState state, string message)
     {
-        Debug.Log(
-            "WebRtcWebcamSender: Signal received. " +
-            "Type = " + type +
-            ", From = " + from +
-            ", PayloadLength = " + (payload != null ? payload.Length : 0)
-        );
-
-        if (type == "video.answer")
-        {
-            StartCoroutine(HandleAnswer(payload));
-        }
-        else if (type == "video.ice")
-        {
-            HandleRemoteIceCandidate(payload);
-        }
+        State = state;
+        Debug.Log("WebRtcWebcamSender: State = " + state + ". " + message);
+        StateChanged?.Invoke(state, message);
     }
 
-    private IEnumerator HandleAnswer(string payload)
+    private void OnApplicationPause(bool paused)
     {
-        if (peerConnection == null)
-        {
-            Debug.LogWarning("WebRtcWebcamSender: peerConnection is null when answer received.");
-            yield break;
-        }
-
-        SdpSignal signal = JsonUtility.FromJson<SdpSignal>(payload);
-
-        if (signal == null || string.IsNullOrEmpty(signal.sdp))
-        {
-            Debug.LogWarning("WebRtcWebcamSender: Invalid answer payload.");
-            yield break;
-        }
-
-        RTCSessionDescription answer = new RTCSessionDescription
-        {
-            type = RTCSdpType.Answer,
-            sdp = signal.sdp
-        };
-
-        RTCSetSessionDescriptionAsyncOperation remoteOp =
-            peerConnection.SetRemoteDescription(ref answer);
-
-        yield return remoteOp;
-
-        if (remoteOp.IsError)
-        {
-            Debug.LogError("WebRtcWebcamSender: SetRemoteDescription answer failed: " + remoteOp.Error.message);
-            yield break;
-        }
-
-        remoteDescriptionSet = true;
-
-        Debug.Log("WebRtcWebcamSender: WebRTC answer applied.");
-
-        FlushPendingRemoteCandidates();
+        if (paused)
+            ForceStopWebcamStream();
     }
 
-    private void HandleRemoteIceCandidate(string payload)
+    private void OnDisable()
     {
-        IceSignal signal = JsonUtility.FromJson<IceSignal>(payload);
-
-        if (signal == null || string.IsNullOrEmpty(signal.candidate))
+        if (signalHubCoroutine != null)
         {
-            Debug.LogWarning("WebRtcWebcamSender: Invalid ICE candidate payload.");
-            return;
+            StopCoroutine(signalHubCoroutine);
+            signalHubCoroutine = null;
         }
 
-        Debug.Log("WebRtcWebcamSender: Remote ICE candidate received: " + signal.candidate);
-        LogCandidateType("WebRtcWebcamSender remote", signal.candidate);
+        if (signalHubSubscribed && WebRtcSignalHub.Instance != null)
+            WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
 
-        if (!remoteDescriptionSet || peerConnection == null)
-        {
-            pendingRemoteCandidates.Add(signal);
-            Debug.Log("WebRtcWebcamSender: Remote ICE candidate cached. Count = " + pendingRemoteCandidates.Count);
-            return;
-        }
-
-        AddRemoteIceCandidate(signal);
-    }
-
-    private void FlushPendingRemoteCandidates()
-    {
-        if (peerConnection == null)
-            return;
-
-        if (pendingRemoteCandidates.Count == 0)
-            return;
-
-        Debug.Log("WebRtcWebcamSender: Flushing pending ICE candidates. Count: " + pendingRemoteCandidates.Count);
-
-        foreach (IceSignal signal in pendingRemoteCandidates)
-        {
-            AddRemoteIceCandidate(signal);
-        }
-
-        pendingRemoteCandidates.Clear();
-    }
-
-    private void AddRemoteIceCandidate(IceSignal signal)
-    {
-        if (peerConnection == null)
-            return;
-
-        RTCIceCandidateInit init = new RTCIceCandidateInit
-        {
-            candidate = signal.candidate,
-            sdpMid = signal.sdpMid,
-            sdpMLineIndex = signal.sdpMLineIndex >= 0 ? signal.sdpMLineIndex : null
-        };
-
-        peerConnection.AddIceCandidate(new RTCIceCandidate(init));
-
-        Debug.Log("WebRtcWebcamSender: Remote ICE candidate added.");
+        signalHubSubscribed = false;
+        ForceStopWebcamStream();
     }
 
     private void OnDestroy()
     {
-        if (WebRtcSignalHub.Instance != null)
-        {
+        if (startStreamButton != null)
+            startStreamButton.onClick.RemoveListener(StartWebcamStream);
+
+        if (signalHubSubscribed && WebRtcSignalHub.Instance != null)
             WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
-        }
 
-        StopWebcamStream();
-
+        signalHubSubscribed = false;
+        ForceStopWebcamStream();
     }
 }

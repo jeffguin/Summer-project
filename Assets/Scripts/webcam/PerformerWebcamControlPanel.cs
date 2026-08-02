@@ -9,6 +9,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     [SerializeField] private TMP_Dropdown cameraDropdown;
     [SerializeField] private Button startButton;
     [SerializeField] private Button stopButton;
+    [SerializeField] private TMP_Text videoStatusText;
 
     [Header("Audio UI")]
     [SerializeField] private TMP_Dropdown actorMicDropdown;
@@ -33,6 +34,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     private Coroutine requestAudienceMicListCoroutine;
     private readonly List<string> actorMicDevices = new List<string>();
     private readonly List<string> audienceMicDevices = new List<string>();
+    private bool hasAudienceCamera;
 
     private void Awake()
     {
@@ -246,6 +248,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             if (startButton != null)
                 startButton.interactable = false;
 
+            if (stopButton != null)
+                stopButton.interactable = false;
+
+            hasAudienceCamera = false;
+
             return;
         }
 
@@ -257,6 +264,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         if (startButton != null)
             startButton.interactable = true;
+
+        if (stopButton != null)
+            stopButton.interactable = false;
+
+        hasAudienceCamera = true;
 
         Debug.Log("PerformerWebcamControlPanel: Audience camera list updated. Count = " + cameraNames.Length);
     }
@@ -275,6 +287,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
         if (startButton != null)
             startButton.interactable = false;
+
+        if (stopButton != null)
+            stopButton.interactable = false;
+
+        hasAudienceCamera = false;
     }
 
     public void OnCameraSelected(int index)
@@ -312,6 +329,33 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         Debug.Log("Performer requested Stop Audience Video.");
 
         controlHub.RequestStopAudienceVideo();
+    }
+
+    public void SetVideoState(WebRtcVideoReceiver.SessionState state, string message)
+    {
+        bool idleOrFailed =
+            state == WebRtcVideoReceiver.SessionState.Idle ||
+            state == WebRtcVideoReceiver.SessionState.Failed;
+
+        bool canStop =
+            state == WebRtcVideoReceiver.SessionState.Negotiating ||
+            state == WebRtcVideoReceiver.SessionState.Connecting ||
+            state == WebRtcVideoReceiver.SessionState.Connected ||
+            state == WebRtcVideoReceiver.SessionState.Recovering;
+
+        if (cameraDropdown != null)
+            cameraDropdown.interactable = idleOrFailed && hasAudienceCamera;
+
+        if (startButton != null)
+            startButton.interactable = idleOrFailed && hasAudienceCamera;
+
+        if (stopButton != null)
+            stopButton.interactable = canStop;
+
+        if (videoStatusText != null)
+            videoStatusText.text = "Video: " + state + " — " + message;
+
+        Debug.Log("PerformerWebcamControlPanel: Video state = " + state + ". " + message);
     }
 
     // =========================

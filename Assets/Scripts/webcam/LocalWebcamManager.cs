@@ -22,6 +22,14 @@ public class LocalWebcamManager : MonoBehaviour
     private WebCamTexture webcamTexture;
     private int selectedCameraIndex = 0;
 
+    public string CurrentDeviceName => webcamTexture != null ? webcamTexture.deviceName : "";
+    public bool IsCurrentCameraReady =>
+        webcamTexture != null &&
+        webcamTexture.isPlaying &&
+        webcamTexture.didUpdateThisFrame &&
+        webcamTexture.width > 16 &&
+        webcamTexture.height > 16;
+
     private void Start()
     {
         RefreshCameraList();
@@ -46,7 +54,6 @@ public class LocalWebcamManager : MonoBehaviour
 
     public void RefreshCameraList()
     {
-
         devices = WebCamTexture.devices;
 
         Debug.Log("Webcam device count: " + devices.Length);
@@ -55,10 +62,6 @@ public class LocalWebcamManager : MonoBehaviour
         {
             Debug.Log("Webcam " + i + ": " + devices[i].name);
         }
-
-
-        devices = WebCamTexture.devices;
-
         if (cameraDropdown == null)
         {
             return;
@@ -139,18 +142,25 @@ public class LocalWebcamManager : MonoBehaviour
 
     public void StartCameraByIndex(int cameraIndex)
     {
+        if (!TryStartCameraByIndex(cameraIndex, out string error))
+            Debug.LogWarning("LocalWebcamManager: " + error);
+    }
+
+    public bool TryStartCameraByIndex(int cameraIndex, out string error)
+    {
+        error = "";
         devices = WebCamTexture.devices;
 
         if (devices == null || devices.Length == 0)
         {
-            Debug.LogWarning("LocalWebcamManager: No webcam device available.");
-            return;
+            error = "No webcam device is available.";
+            return false;
         }
 
         if (cameraIndex < 0 || cameraIndex >= devices.Length)
         {
-            Debug.LogWarning("LocalWebcamManager: Invalid camera index: " + cameraIndex);
-            return;
+            error = "Invalid camera index: " + cameraIndex + ". Device count: " + devices.Length + ".";
+            return false;
         }
 
         selectedCameraIndex = cameraIndex;
@@ -176,6 +186,7 @@ public class LocalWebcamManager : MonoBehaviour
         }
 
         Debug.Log("Started webcam: " + cameraName);
+        return true;
     }
 
     public WebCamTexture GetCurrentWebcamTexture()
@@ -204,6 +215,11 @@ public class LocalWebcamManager : MonoBehaviour
     }
 
     private void OnDestroy()
+    {
+        StopWebcam();
+    }
+
+    private void OnDisable()
     {
         StopWebcam();
     }
