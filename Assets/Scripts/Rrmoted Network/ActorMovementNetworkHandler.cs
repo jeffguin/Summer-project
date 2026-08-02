@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using Meta.XR.Movement.Networking;
+#if FUSION2
+using Meta.XR.Movement.Networking.Fusion;
+#endif
 using Unity.Collections;
 using UnityEngine;
 using static Meta.XR.Movement.MSDKUtility;
@@ -11,6 +14,8 @@ using static Unity.Collections.NativeArrayOptions;
 [DisallowMultipleComponent]
 public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharacterHandler
 {
+    private const int MaximumPacketBytes = 1024;
+
     public INetworkCharacterBehaviour CharacterBehaviour => _characterBehaviour;
     public GameObject Character => _character;
     public NetworkCharacterRetargeter NetworkCharacterRetargeter => _networkCharacterRetargeter;
@@ -23,6 +28,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     }
 
     public Action<int> BytesReceived;
+    public Action<int> BytesSent;
 
     [Header("Movement Retargeting")]
     [SerializeField]
@@ -34,17 +40,37 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     [SerializeField]
     private float _spawnDelay = 0.5f;
 
-    [Header("Safety")]
-    [Tooltip("Maximum packets retained while the remote character is still being initialized.")]
+    [Header("Network Load")]
+    [Tooltip("Hard upper limit for movement packets per second. The local pose " +
+             "is still sampled every rendered frame; only network transmission is limited.")]
     [SerializeField]
-    [Min(1)]
-    private int _fallbackBufferSize = 5;
+    [Min(1f)]
+    private float _maximumSendRateHz = 12f;
+
+    [Tooltip("Number of preallocated 1024-byte receive slots. When full, the " +
+             "oldest packet is discarded so latency and native memory stay bounded.")]
+    [SerializeField]
+    [Min(2)]
+    private int _receiveBufferSize = 3;
+
+    [Header("Diagnostics")]
+    [Tooltip("Logs aggregate movement bandwidth and queue pressure at a low rate.")]
+    [SerializeField]
+    private bool _logNetworkStatistics;
+
+    [SerializeField]
+    [Min(1f)]
+    private float _networkStatisticsInterval = 5f;
 
     private INetworkCharacterBehaviour _characterBehaviour;
     private GameObject _character;
 
     private readonly Dictionary<ulong, int> _clientsLastAck = new();
-    private Queue<NativeArray<byte>> _streamedData;
+    private NativeArray<byte>[] _receiveSlots;
+    private int[] _receiveLengths;
+    private int _receiveReadIndex;
+    private int _receiveWriteIndex;
+    private int _receiveCount;
 
     private NativeArray<NativeTransform> _bodyPose;
     private NativeArray<float> _facePose;
@@ -55,6 +81,15 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private int _dataReadCount;
     private int _configuredFaceShapeCount;
 
+    private float _networkStatisticsElapsed;
+    private int _receivedBytesInWindow;
+    private int _receivedPacketsInWindow;
+    private int _sentBytesInWindow;
+    private int _sentPacketsInWindow;
+    private int _droppedPacketsInWindow;
+    private int _largestReceivedPacketInWindow;
+    private int _largestSentPacketInWindow;
+
     private bool _dataIsValid;
     private bool _setupRequested;
     private bool _instantiateCharacter = true;
@@ -64,6 +99,14 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private bool _loggedSetupFailure;
     private bool _loggedReceiveBeforeReady;
     private bool _loggedDeserializeFailure;
+    private bool _loggedOversizedPacket;
+
+    private float EffectiveSendInterval => Mathf.Max(
+        _networkCharacterRetargeter != null
+            ? _networkCharacterRetargeter.IntervalToSendData
+            : 0f,
+        1f / Mathf.Max(1f, _maximumSendRateHz)
+    );
 
     private bool ShouldSyncData =>
         _networkCharacterRetargeter != null &&
@@ -72,11 +115,18 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private bool ShouldSendData =>
         _networkCharacterRetargeter != null &&
-        (ShouldSyncData ||
-         _elapsedSendTime >= _networkCharacterRetargeter.IntervalToSendData);
+        _elapsedSendTime >= EffectiveSendInterval;
 
     private void Awake()
     {
+        _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
+        _receiveBufferSize = Mathf.Max(2, _receiveBufferSize);
+        _networkStatisticsInterval = Mathf.Max(
+            1f,
+            _networkStatisticsInterval
+        );
+
+        CreateReceiveBuffers();
         _characterBehaviour = GetComponent<INetworkCharacterBehaviour>();
 
         if (_networkCharacterRetargeter == null)
@@ -102,6 +152,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void Update()
     {
+        UpdateNetworkStatistics();
+
         if (_setupRequested && !_setupComplete)
         {
             TryCompleteSetup();
@@ -140,7 +192,12 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void OnValidate()
     {
-        _fallbackBufferSize = Mathf.Max(1, _fallbackBufferSize);
+        _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
+        _receiveBufferSize = Mathf.Max(2, _receiveBufferSize);
+        _networkStatisticsInterval = Mathf.Max(
+            1f,
+            _networkStatisticsInterval
+        );
 
         if (_networkCharacterRetargeter != null &&
             _networkCharacterRetargeter.Owner ==
@@ -203,6 +260,20 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
+#if FUSION2
+        // Fusion replicates this NetworkArray to every observer. Its
+        // ReceiveStreamData implementation ignores clientId, so serializing
+        // once per client only repeats native work and overwrites the same
+        // state. Use one baseline shared by all clients, or a full snapshot
+        // when their acknowledgements differ.
+        if (_characterBehaviour is NetworkCharacterBehaviourFusion)
+        {
+            SendFusionBroadcast(clientIds, localClientId, networkTime);
+            ResetSendTimers();
+            return;
+        }
+#endif
+
         foreach (ulong clientId in clientIds)
         {
             if (clientId == localClientId)
@@ -214,19 +285,105 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 ? ack
                 : -1;
 
-            SerializeData(lastAck, networkTime);
-
-            if (_serializedData.IsCreated && _serializedData.Length > 0)
-            {
-                _characterBehaviour.ReceiveStreamData(
-                    clientId,
-                    false,
-                    _serializedData
-                );
-            }
+            SerializeAndSend(clientId, lastAck, networkTime);
         }
 
         ResetSendTimers();
+    }
+
+#if FUSION2
+    private void SendFusionBroadcast(
+        ulong[] clientIds,
+        ulong localClientId,
+        float networkTime)
+    {
+        bool foundRemoteClient = false;
+        bool acknowledgementsMatch = true;
+        ulong firstRemoteClientId = 0;
+        int sharedAck = -1;
+
+        foreach (ulong clientId in clientIds)
+        {
+            if (clientId == localClientId)
+            {
+                continue;
+            }
+
+            int clientAck = _clientsLastAck.TryGetValue(clientId, out int ack)
+                ? ack
+                : -1;
+
+            if (!foundRemoteClient)
+            {
+                foundRemoteClient = true;
+                firstRemoteClientId = clientId;
+                sharedAck = clientAck;
+            }
+            else if (clientAck != sharedAck)
+            {
+                acknowledgementsMatch = false;
+            }
+        }
+
+        if (!foundRemoteClient)
+        {
+            return;
+        }
+
+        SerializeAndSend(
+            firstRemoteClientId,
+            acknowledgementsMatch ? sharedAck : -1,
+            networkTime
+        );
+    }
+#endif
+
+    private void SerializeAndSend(
+        ulong clientId,
+        int lastAck,
+        float networkTime)
+    {
+        try
+        {
+            SerializeData(lastAck, networkTime);
+
+            if (!_serializedData.IsCreated || _serializedData.Length == 0)
+            {
+                return;
+            }
+
+            if (_serializedData.Length > MaximumPacketBytes)
+            {
+                if (!_loggedOversizedPacket)
+                {
+                    Debug.LogError(
+                        "ActorMovementNetworkHandler: Serialized movement " +
+                        $"packet is {_serializedData.Length} bytes, exceeding " +
+                        $"Fusion's {MaximumPacketBytes}-byte capacity. The " +
+                        "packet was dropped instead of truncating body or face data.",
+                        this
+                    );
+
+                    _loggedOversizedPacket = true;
+                }
+
+                RecordDroppedPacket();
+                return;
+            }
+
+            _characterBehaviour.ReceiveStreamData(
+                clientId,
+                false,
+                _serializedData
+            );
+
+            RecordSentPacket(_serializedData.Length);
+            BytesSent?.Invoke(_serializedData.Length);
+        }
+        finally
+        {
+            DisposeSerializedData();
+        }
     }
 
     public void ReceiveData(NativeArray<byte> data)
@@ -236,30 +393,55 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        int maxBufferSize = GetMaxBufferSize();
-        _streamedData ??= new Queue<NativeArray<byte>>(maxBufferSize);
+        RecordReceivedPacket(data.Length);
+        BytesReceived?.Invoke(data.Length);
 
-        while (_streamedData.Count >= maxBufferSize)
+        if (data.Length > MaximumPacketBytes)
         {
-            NativeArray<byte> discarded = _streamedData.Dequeue();
-
-            if (discarded.IsCreated)
+            if (!_loggedOversizedPacket)
             {
-                discarded.Dispose();
+                Debug.LogError(
+                    "ActorMovementNetworkHandler: Received movement packet " +
+                    $"is {data.Length} bytes, exceeding the preallocated " +
+                    $"{MaximumPacketBytes}-byte slot. The packet was dropped " +
+                    "instead of being truncated.",
+                    this
+                );
+
+                _loggedOversizedPacket = true;
             }
+
+            RecordDroppedPacket();
+            return;
         }
 
-        var copy = new NativeArray<byte>(
-            data.Length,
-            Persistent,
-            UninitializedMemory
+        if (_receiveSlots == null || _receiveSlots.Length == 0)
+        {
+            CreateReceiveBuffers();
+        }
+
+        if (_receiveCount == _receiveSlots.Length)
+        {
+            _receiveLengths[_receiveReadIndex] = 0;
+            _receiveReadIndex =
+                (_receiveReadIndex + 1) % _receiveSlots.Length;
+            _receiveCount--;
+            RecordDroppedPacket();
+        }
+
+        NativeArray<byte>.Copy(
+            data,
+            0,
+            _receiveSlots[_receiveWriteIndex],
+            0,
+            data.Length
         );
 
-        data.CopyTo(copy);
-        _streamedData.Enqueue(copy);
+        _receiveLengths[_receiveWriteIndex] = data.Length;
+        _receiveWriteIndex =
+            (_receiveWriteIndex + 1) % _receiveSlots.Length;
+        _receiveCount++;
         _dataReadCount++;
-
-        BytesReceived?.Invoke(data.Length);
 
         if (!_setupComplete)
         {
@@ -542,27 +724,49 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         int jointCount = _networkCharacterRetargeter.NumberOfJoints;
 
-        if (_networkCharacterRetargeter.BodyIndicesToSync == null ||
-            _networkCharacterRetargeter.BodyIndicesToSync.Length == 0)
+        if (!ContainsEverySequentialIndex(
+                _networkCharacterRetargeter.BodyIndicesToSync,
+                jointCount))
         {
             _networkCharacterRetargeter.BodyIndicesToSync =
                 CreateSequentialIndices(jointCount);
         }
 
-        if (_networkCharacterRetargeter.BodyIndicesToSend == null ||
-            _networkCharacterRetargeter.BodyIndicesToSend.Length == 0)
+        if (!ContainsEverySequentialIndex(
+                _networkCharacterRetargeter.BodyIndicesToSend,
+                jointCount))
         {
             _networkCharacterRetargeter.BodyIndicesToSend =
                 CreateSequentialIndices(jointCount);
         }
 
-        if ((_networkCharacterRetargeter.FaceIndicesToSync == null ||
-             _networkCharacterRetargeter.FaceIndicesToSync.Length == 0) &&
-            _configuredFaceShapeCount > 0)
+        if (!ContainsEverySequentialIndex(
+                _networkCharacterRetargeter.FaceIndicesToSync,
+                _configuredFaceShapeCount))
         {
             _networkCharacterRetargeter.FaceIndicesToSync =
                 CreateSequentialIndices(_configuredFaceShapeCount);
         }
+    }
+
+    private static bool ContainsEverySequentialIndex(
+        int[] indices,
+        int requiredCount)
+    {
+        if (indices == null || indices.Length != requiredCount)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < requiredCount; i++)
+        {
+            if (indices[i] != i)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static int[] CreateSequentialIndices(int count)
@@ -587,7 +791,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        if (_streamedData is { Count: > 0 })
+        if (_receiveCount > 0)
         {
             DeserializeNextPacket();
         }
@@ -615,7 +819,23 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void DeserializeNextPacket()
     {
-        NativeArray<byte> data = _streamedData.Dequeue();
+        int slotIndex = _receiveReadIndex;
+        int dataLength = _receiveLengths[slotIndex];
+
+        _receiveLengths[slotIndex] = 0;
+        _receiveReadIndex =
+            (_receiveReadIndex + 1) % _receiveSlots.Length;
+        _receiveCount--;
+
+        if (dataLength <= 0)
+        {
+            return;
+        }
+
+        // GetSubArray creates a non-owning view. The persistent owner remains
+        // allocated in the ring and is reused by the next received packet.
+        NativeArray<byte> data =
+            _receiveSlots[slotIndex].GetSubArray(0, dataLength);
 
         try
         {
@@ -660,13 +880,6 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 );
 
                 _loggedDeserializeFailure = true;
-            }
-        }
-        finally
-        {
-            if (data.IsCreated)
-            {
-                data.Dispose();
             }
         }
     }
@@ -718,8 +931,27 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void TrySendData(float networkTime)
     {
-        _elapsedSendTime += _characterBehaviour.DeltaTime;
-        _elapsedSyncTime += _characterBehaviour.DeltaTime;
+        // This method runs from LateUpdate, so use actual frame time. Fusion's
+        // Runner.DeltaTime is a simulation-tick duration and can overcount when
+        // the headset renders at a different rate (for example 72 or 90 Hz).
+        float deltaTime = Mathf.Max(0f, Time.unscaledDeltaTime);
+        _elapsedSendTime = Mathf.Min(
+            _elapsedSendTime + deltaTime,
+            EffectiveSendInterval
+        );
+
+        if (_networkCharacterRetargeter.UseSyncInterval)
+        {
+            float syncInterval = Mathf.Max(
+                0.0001f,
+                _networkCharacterRetargeter.IntervalToSyncData
+            );
+
+            _elapsedSyncTime = Mathf.Min(
+                _elapsedSyncTime + deltaTime,
+                syncInterval
+            );
+        }
 
         if (ShouldSendData)
         {
@@ -729,6 +961,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void SerializeData(int lastAck, float networkTime)
     {
+        DisposeSerializedData();
+
         if (!_setupComplete ||
             _networkCharacterRetargeter.RetargetingHandle == INVALID_HANDLE)
         {
@@ -788,29 +1022,12 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         if (ShouldSyncData)
         {
-            _elapsedSyncTime -=
-                _networkCharacterRetargeter.IntervalToSyncData;
-
-            _elapsedSendTime = 0f;
-        }
-        else if (ShouldSendData)
-        {
-            _elapsedSendTime -=
-                _networkCharacterRetargeter.IntervalToSendData;
-        }
-    }
-
-    private int GetMaxBufferSize()
-    {
-        if (_networkCharacterRetargeter != null)
-        {
-            return Mathf.Max(
-                1,
-                _networkCharacterRetargeter.MaxBufferSize
-            );
+            _elapsedSyncTime = 0f;
         }
 
-        return Mathf.Max(1, _fallbackBufferSize);
+        // Do not subtract the interval. After a hitch that would leave a large
+        // remainder and cause catch-up packets on consecutive render frames.
+        _elapsedSendTime = 0f;
     }
 
     private void ToggleCharacterWhenReady()
@@ -820,15 +1037,100 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        float interval = Mathf.Max(
-            0.0001f,
-            _networkCharacterRetargeter.IntervalToSendData
-        );
+        float interval = EffectiveSendInterval;
 
         if (_dataReadCount >= _spawnDelay / interval)
         {
             _networkCharacterRetargeter.ToggleObjects(true);
         }
+    }
+
+    private void RecordReceivedPacket(int byteCount)
+    {
+        if (!_logNetworkStatistics)
+        {
+            return;
+        }
+
+        _receivedBytesInWindow += byteCount;
+        _receivedPacketsInWindow++;
+        _largestReceivedPacketInWindow = Mathf.Max(
+            _largestReceivedPacketInWindow,
+            byteCount
+        );
+    }
+
+    private void RecordSentPacket(int byteCount)
+    {
+        if (!_logNetworkStatistics)
+        {
+            return;
+        }
+
+        _sentBytesInWindow += byteCount;
+        _sentPacketsInWindow++;
+        _largestSentPacketInWindow = Mathf.Max(
+            _largestSentPacketInWindow,
+            byteCount
+        );
+    }
+
+    private void RecordDroppedPacket()
+    {
+        if (_logNetworkStatistics)
+        {
+            _droppedPacketsInWindow++;
+        }
+    }
+
+    private void UpdateNetworkStatistics()
+    {
+        if (!_logNetworkStatistics)
+        {
+            return;
+        }
+
+        _networkStatisticsElapsed += Time.unscaledDeltaTime;
+
+        if (_networkStatisticsElapsed < _networkStatisticsInterval)
+        {
+            return;
+        }
+
+        float elapsed = Mathf.Max(0.0001f, _networkStatisticsElapsed);
+        int packetCount = _sentPacketsInWindow +
+                          _receivedPacketsInWindow +
+                          _droppedPacketsInWindow;
+
+        if (packetCount > 0)
+        {
+            float sentKilobitsPerSecond =
+                _sentBytesInWindow * 8f / elapsed / 1000f;
+            float receivedKilobitsPerSecond =
+                _receivedBytesInWindow * 8f / elapsed / 1000f;
+
+            Debug.Log(
+                "ActorMovementNetworkHandler: movement network stats - " +
+                $"TX {sentKilobitsPerSecond:F1} kbit/s " +
+                $"({_sentPacketsInWindow} packets, max " +
+                $"{_largestSentPacketInWindow} B), " +
+                $"RX {receivedKilobitsPerSecond:F1} kbit/s " +
+                $"({_receivedPacketsInWindow} packets, max " +
+                $"{_largestReceivedPacketInWindow} B), " +
+                $"queue {_receiveCount}/{_receiveBufferSize}, " +
+                $"dropped {_droppedPacketsInWindow}.",
+                this
+            );
+        }
+
+        _networkStatisticsElapsed = 0f;
+        _receivedBytesInWindow = 0;
+        _receivedPacketsInWindow = 0;
+        _sentBytesInWindow = 0;
+        _sentPacketsInWindow = 0;
+        _droppedPacketsInWindow = 0;
+        _largestReceivedPacketInWindow = 0;
+        _largestSentPacketInWindow = 0;
     }
 
     private void ResetForCharacterChange()
@@ -839,9 +1141,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _dataReadCount = 0;
         _configuredFaceShapeCount = 0;
         _networkCharacterRetargeter = null;
+        _loggedOversizedPacket = false;
 
         DisposePoseBuffers();
-        DisposeStreamedData();
+        ClearReceiveQueue();
 
         if (_character != null && _character != gameObject)
         {
@@ -853,28 +1156,70 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void DisposeNativeData()
     {
-        DisposeStreamedData();
+        DisposeSerializedData();
+        DisposeReceiveBuffers();
         DisposePoseBuffers();
     }
 
-    private void DisposeStreamedData()
+    private void CreateReceiveBuffers()
     {
-        if (_streamedData == null)
+        DisposeReceiveBuffers();
+
+        int slotCount = Mathf.Max(2, _receiveBufferSize);
+        _receiveSlots = new NativeArray<byte>[slotCount];
+        _receiveLengths = new int[slotCount];
+
+        for (int i = 0; i < slotCount; i++)
         {
-            return;
+            _receiveSlots[i] = new NativeArray<byte>(
+                MaximumPacketBytes,
+                Persistent,
+                UninitializedMemory
+            );
         }
 
-        while (_streamedData.Count > 0)
-        {
-            NativeArray<byte> data = _streamedData.Dequeue();
+        ClearReceiveQueue();
+    }
 
-            if (data.IsCreated)
+    private void ClearReceiveQueue()
+    {
+        if (_receiveLengths != null)
+        {
+            Array.Clear(_receiveLengths, 0, _receiveLengths.Length);
+        }
+
+        _receiveReadIndex = 0;
+        _receiveWriteIndex = 0;
+        _receiveCount = 0;
+    }
+
+    private void DisposeReceiveBuffers()
+    {
+        if (_receiveSlots != null)
+        {
+            for (int i = 0; i < _receiveSlots.Length; i++)
             {
-                data.Dispose();
+                if (_receiveSlots[i].IsCreated)
+                {
+                    _receiveSlots[i].Dispose();
+                }
             }
         }
 
-        _streamedData = null;
+        _receiveSlots = null;
+        _receiveLengths = null;
+        _receiveReadIndex = 0;
+        _receiveWriteIndex = 0;
+        _receiveCount = 0;
+    }
+
+    private void DisposeSerializedData()
+    {
+        if (_serializedData.IsCreated)
+        {
+            _serializedData.Dispose();
+            _serializedData = default;
+        }
     }
 
     private void DisposePoseBuffers()

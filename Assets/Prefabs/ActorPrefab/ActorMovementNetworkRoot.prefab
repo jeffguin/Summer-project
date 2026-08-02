@@ -106,6 +106,10 @@ MonoBehaviour:
   _networkCharacterRetargeter: {fileID: 0}
   _applyData: 1
   _spawnDelay: 0.5
+  _maximumSendRateHz: 12
+  _receiveBufferSize: 3
+  _logNetworkStatistics: 0
+  _networkStatisticsInterval: 5
 --- !u!114 &-5778272132864700022
 MonoBehaviour:
   m_ObjectHideFlags: 0
