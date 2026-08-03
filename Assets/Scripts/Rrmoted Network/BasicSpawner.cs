@@ -94,6 +94,11 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [Tooltip("如果两个 Build Profile 都只放一个场景，建议保持为 0。")]
     [SerializeField] private int _sceneBuildIndex = 0;
 
+    [Tooltip("仅当所有客户端需要由 Fusion 加载同一个物理场景时开启。" +
+             "Actor 与 Audience 使用不同本地场景时必须关闭，避免 SceneRef 0 " +
+             "把 Audience Editor 切换到 Actor 场景。")]
+    [SerializeField] private bool _synchronizeRoleSceneThroughFusion = false;
+
     [Header("Debug")]
     [Tooltip("开启后输出初始网络物体、可交互物体列表、SpawnPoint、PrefabRef、Runner 状态等调试日志。")]
     [SerializeField] private bool _debugInteractableSpawning = true;
@@ -243,20 +248,38 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         _runner.ProvideInput = true;
         _runner.AddCallbacks(this);
 
-        SceneRef scene = SceneRef.FromIndex(_sceneBuildIndex);
+        SceneRef scene = SceneRef.None;
+        var startGameArgs = new StartGameArgs()
+        {
+            GameMode = mode,
+            SessionName = _sessionName
+        };
+
+        if (_synchronizeRoleSceneThroughFusion)
+        {
+            scene = SceneRef.FromIndex(_sceneBuildIndex);
+
+            NetworkSceneManagerDefault sceneManager =
+                GetComponent<NetworkSceneManagerDefault>();
+
+            if (sceneManager == null)
+            {
+                sceneManager =
+                    gameObject.AddComponent<NetworkSceneManagerDefault>();
+            }
+
+            startGameArgs.Scene = scene;
+            startGameArgs.SceneManager = sceneManager;
+        }
 
         Debug.Log(
             $"BasicSpawner: Starting Fusion. " +
-            $"Mode: {mode}, Role: {_localRole}, Session: {_sessionName}, SceneIndex: {_sceneBuildIndex}"
+            $"Mode: {mode}, Role: {_localRole}, Session: {_sessionName}, " +
+            $"SynchronizeScene: {_synchronizeRoleSceneThroughFusion}, " +
+            $"SceneRef: {scene}, LocalScene: {gameObject.scene.path}"
         );
 
-        StartGameResult result = await _runner.StartGame(new StartGameArgs()
-        {
-            GameMode = mode,
-            SessionName = _sessionName,
-            Scene = scene,
-            SceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>()
-        });
+        StartGameResult result = await _runner.StartGame(startGameArgs);
 
         _isStartingGame = false;
 

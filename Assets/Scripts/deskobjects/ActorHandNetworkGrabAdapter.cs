@@ -42,12 +42,17 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
     [SerializeField] private float targetSendRate = 30f;
 
     [Header("Debug")]
-    [SerializeField] private bool debugLog = true;
-    [SerializeField] private bool drawDebugSphere = true;
+    [SerializeField] private bool debugLog = false;
+    [SerializeField] private bool drawDebugSphere = false;
     [SerializeField] private bool debugHoverLog = false;
     [SerializeField] private bool debugPinchLog = false;
 
+    private const int OverlapResultCapacity = 32;
+    private const float ContinuousDebugInterval = 1f;
+
     private NetworkRunner runner;
+    private readonly Collider[] overlapResults =
+        new Collider[OverlapResultCapacity];
 
     private NetworkPhysicalGrabbable hoveredObject;
     private NetworkPhysicalGrabbable grabbedObject;
@@ -56,7 +61,10 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
     private Quaternion grabbedRotationOffset;
 
     private float nextTargetSendTime;
+    private float nextContinuousDebugTime;
     private bool isPinching;
+    private bool hasObservedTrackingState;
+    private bool wasHandTracked;
 
     private void Start()
     {
@@ -105,14 +113,16 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
 
     private void UpdateHover()
     {
+        NetworkPhysicalGrabbable previousHoveredObject = hoveredObject;
         hoveredObject = null;
 
         if (handTransform == null)
             return;
 
-        Collider[] hits = Physics.OverlapSphere(
+        int hitCount = Physics.OverlapSphereNonAlloc(
             handTransform.position,
             grabRadius,
+            overlapResults,
             interactableLayers,
             QueryTriggerInteraction.Ignore
         );
@@ -120,8 +130,13 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
         float closestDistance = float.MaxValue;
         NetworkPhysicalGrabbable closestObject = null;
 
-        foreach (Collider hit in hits)
+        for (int i = 0; i < hitCount; i++)
         {
+            Collider hit = overlapResults[i];
+
+            if (hit == null)
+                continue;
+
             NetworkPhysicalGrabbable grabbable =
                 hit.GetComponentInParent<NetworkPhysicalGrabbable>();
 
@@ -142,12 +157,19 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
 
         hoveredObject = closestObject;
 
-        if (debugHoverLog && hoveredObject != null)
+        if (debugHoverLog && hoveredObject != previousHoveredObject)
         {
-            DebugMessage(
-                $"Hovering {hoveredObject.name}, Distance={closestDistance}, " +
-                $"HandPosition={handTransform.position}"
-            );
+            if (hoveredObject == null)
+            {
+                DebugMessage("Hover ended.");
+            }
+            else
+            {
+                DebugMessage(
+                    $"Hovering {hoveredObject.name}, Distance={closestDistance}, " +
+                    $"HandPosition={handTransform.position}"
+                );
+            }
         }
     }
 
@@ -155,17 +177,28 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
     {
         if (ovrHand == null)
         {
-            DebugMessage("UpdatePinchInput skipped because OVRHand is null.");
             return;
         }
 
-        if (!ovrHand.IsTracked)
+        bool handIsTracked = ovrHand.IsTracked;
+
+        if (!hasObservedTrackingState || handIsTracked != wasHandTracked)
         {
             if (debugPinchLog)
             {
-                DebugMessage("Hand is not tracked.");
+                DebugMessage(
+                    handIsTracked
+                        ? "Hand tracking acquired."
+                        : "Hand tracking lost."
+                );
             }
 
+            hasObservedTrackingState = true;
+            wasHandTracked = handIsTracked;
+        }
+
+        if (!handIsTracked)
+        {
             if (isPinching)
             {
                 DebugMessage("Hand tracking lost while grabbing. Releasing object.");
@@ -178,14 +211,6 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
 
         float pinchStrength = ovrHand.GetFingerPinchStrength(pinchFinger);
         bool fingerIsPinching = ovrHand.GetFingerIsPinching(pinchFinger);
-
-        if (debugPinchLog)
-        {
-            DebugMessage(
-                $"Pinch check. Finger={pinchFinger}, " +
-                $"IsPinching={fingerIsPinching}, Strength={pinchStrength:F2}"
-            );
-        }
 
         if (!isPinching && fingerIsPinching && pinchStrength >= pinchStartThreshold)
         {
@@ -369,11 +394,17 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
         Quaternion targetRotation =
             handTransform.rotation * grabbedRotationOffset;
 
-        DebugMessage(
-            $"Sending grab target. Object={grabbedObject.name}, " +
-            $"Player={runner.LocalPlayer}, Role={grabRole}, " +
-            $"TargetPosition={targetPosition}, TargetRotation={targetRotation.eulerAngles}"
-        );
+        if (debugPinchLog && Time.unscaledTime >= nextContinuousDebugTime)
+        {
+            nextContinuousDebugTime =
+                Time.unscaledTime + ContinuousDebugInterval;
+
+            DebugMessage(
+                $"Sending grab target. Object={grabbedObject.name}, " +
+                $"Player={runner.LocalPlayer}, Role={grabRole}, " +
+                $"TargetPosition={targetPosition}, TargetRotation={targetRotation.eulerAngles}"
+            );
+        }
 
         grabbedObject.RPC_UpdateGrabTarget(
             runner.LocalPlayer,
