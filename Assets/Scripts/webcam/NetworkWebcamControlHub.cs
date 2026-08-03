@@ -18,7 +18,7 @@ public class NetworkWebcamControlHub : NetworkBehaviour
     private PlayerRef audiencePlayer = PlayerRef.None;
     private Coroutine cameraReportCoroutine;
     private Coroutine videoRetryCoroutine;
-    private int lastRequestedCameraIndex = -1;
+    private bool videoStartWasRequested;
     private int videoRetryAttempt;
     private bool videoRetryAllowed;
 
@@ -54,6 +54,7 @@ public class NetworkWebcamControlHub : NetworkBehaviour
 
         CancelVideoRetry();
         videoRetryAllowed = false;
+        videoStartWasRequested = false;
 
         if (actorVideoReceiver != null)
         {
@@ -100,16 +101,22 @@ public class NetworkWebcamControlHub : NetworkBehaviour
         RPC_ReportCameraList(actorPlayer, string.Join("\n", names));
     }
 
-    public void RequestStartAudienceVideo(int cameraIndex)
+    public void RequestStartAllAudienceVideo()
     {
         CancelVideoRetry();
-        lastRequestedCameraIndex = cameraIndex;
+        videoStartWasRequested = true;
         videoRetryAttempt = 0;
         videoRetryAllowed = true;
-        StartAudienceVideoSession(cameraIndex);
+        StartAudienceVideoSession();
     }
 
-    private void StartAudienceVideoSession(int cameraIndex)
+    // Compatibility entry point for older serialized UI events.
+    public void RequestStartAudienceVideo(int cameraIndex)
+    {
+        RequestStartAllAudienceVideo();
+    }
+
+    private void StartAudienceVideoSession()
     {
         performerPanel ??=
             FindFirstObjectByType<PerformerWebcamControlPanel>(FindObjectsInactive.Include);
@@ -136,17 +143,17 @@ public class NetworkWebcamControlHub : NetworkBehaviour
             return;
 
         Debug.Log(
-            "NetworkWebcamControlHub: Starting Audience video. Camera index: " + cameraIndex +
-            ", Session: " + sessionId +
+            "NetworkWebcamControlHub: Starting all Audience cameras. Session: " + sessionId +
             ", Target: " + target
         );
 
-        RPC_StartAudienceVideo(target, sessionId, cameraIndex);
+        RPC_StartAudienceVideo(target, sessionId);
     }
 
     public void RequestStopAudienceVideo()
     {
         videoRetryAllowed = false;
+        videoStartWasRequested = false;
         CancelVideoRetry();
 
         actorVideoReceiver ??=
@@ -217,7 +224,6 @@ public class NetworkWebcamControlHub : NetworkBehaviour
     private void RPC_StartAudienceVideo(
         PlayerRef target,
         string sessionId,
-        int cameraIndex,
         RpcInfo info = default)
     {
         if (!IsAuthorizedAudienceCommand(target, info.Source))
@@ -229,7 +235,7 @@ public class NetworkWebcamControlHub : NetworkBehaviour
         if (runtime == null)
             return;
 
-        runtime.StartAudienceVideo(sessionId, info.Source, cameraIndex);
+        runtime.StartAudienceVideo(sessionId, info.Source);
     }
 
     [Rpc(
@@ -305,7 +311,7 @@ public class NetworkWebcamControlHub : NetworkBehaviour
             if (logWarning)
             {
                 Debug.LogWarning(
-                    "NetworkWebcamControlHub: Single-camera control requires exactly one remote player. " +
+                    "NetworkWebcamControlHub: Video control requires exactly one remote player. " +
                     "Remote count: " + count + "."
                 );
             }
@@ -337,7 +343,7 @@ public class NetworkWebcamControlHub : NetworkBehaviour
     {
         if (!autoRetryTransientVideoFailures ||
             !videoRetryAllowed ||
-            lastRequestedCameraIndex < 0 ||
+            !videoStartWasRequested ||
             videoRetryCoroutine != null ||
             videoRetryAttempt >= Mathf.Max(0, maxAutoRetryAttempts) ||
             !IsTransientVideoFailure(failureMessage))
@@ -359,10 +365,10 @@ public class NetworkWebcamControlHub : NetworkBehaviour
             );
         }
 
-        videoRetryCoroutine = StartCoroutine(VideoRetryRoutine(delay, lastRequestedCameraIndex));
+        videoRetryCoroutine = StartCoroutine(VideoRetryRoutine(delay));
     }
 
-    private IEnumerator VideoRetryRoutine(float delay, int cameraIndex)
+    private IEnumerator VideoRetryRoutine(float delay)
     {
         yield return new WaitForSecondsRealtime(delay);
         videoRetryCoroutine = null;
@@ -370,7 +376,7 @@ public class NetworkWebcamControlHub : NetworkBehaviour
         if (!videoRetryAllowed)
             yield break;
 
-        StartAudienceVideoSession(cameraIndex);
+        StartAudienceVideoSession();
     }
 
     private void CancelVideoRetry()

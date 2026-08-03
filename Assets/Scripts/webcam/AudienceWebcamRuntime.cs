@@ -19,7 +19,7 @@ public class AudienceWebcamRuntime : MonoBehaviour
         return webcamManager.GetCameraNames();
     }
 
-    public void StartAudienceVideo(string sessionId, PlayerRef actorPlayer, int cameraIndex)
+    public void StartAudienceVideo(string sessionId, PlayerRef actorPlayer)
     {
         if (webcamManager == null || webRtcSender == null)
         {
@@ -28,12 +28,17 @@ public class AudienceWebcamRuntime : MonoBehaviour
         }
 
         Debug.Log(
-            "AudienceWebcamRuntime: Start audience video. Camera index: " + cameraIndex +
-            ", Session: " + sessionId +
+            "AudienceWebcamRuntime: Start all Audience cameras. Session: " + sessionId +
             ", Actor: " + actorPlayer
         );
 
-        webRtcSender.StartWebcamStream(sessionId, actorPlayer, cameraIndex);
+        webRtcSender.StartWebcamStream(sessionId, actorPlayer);
+    }
+
+    // Compatibility overload for older local callers.
+    public void StartAudienceVideo(string sessionId, PlayerRef actorPlayer, int cameraIndex)
+    {
+        StartAudienceVideo(sessionId, actorPlayer);
     }
 
     // Compatibility entry point for optional local/test callers. Network control
@@ -53,7 +58,7 @@ public class AudienceWebcamRuntime : MonoBehaviour
             return;
         }
 
-        StartAudienceVideo(Guid.NewGuid().ToString("N"), actorPlayer, cameraIndex);
+        StartAudienceVideo(Guid.NewGuid().ToString("N"), actorPlayer);
     }
 
     public void StopAudienceVideo()

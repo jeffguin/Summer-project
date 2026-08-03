@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 
 public class PerformerWebcamControlPanel : MonoBehaviour
@@ -10,6 +12,11 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     [SerializeField] private Button startButton;
     [SerializeField] private Button stopButton;
     [SerializeField] private TMP_Text videoStatusText;
+
+    [Header("Multi-Screen Video Layout")]
+    [SerializeField, Min(1)] private int selectorRowsPerColumn = 4;
+    [SerializeField, Min(1f)] private float selectorRowSpacing = 38f;
+    [SerializeField, Min(1f)] private float selectorColumnSpacing = 230f;
 
     [Header("Audio UI")]
     [SerializeField] private TMP_Dropdown actorMicDropdown;
@@ -30,20 +37,35 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     [SerializeField] private int selectedAudienceMicIndex = 0;
 
     private NetworkWebcamControlHub controlHub;
+    private WebRtcVideoReceiver videoReceiver;
 
     private Coroutine requestAudienceMicListCoroutine;
     private readonly List<string> actorMicDevices = new List<string>();
     private readonly List<string> audienceMicDevices = new List<string>();
+    private readonly List<CameraOption> reportedCameraOptions = new List<CameraOption>();
+    private readonly List<CameraOption> effectiveCameraOptions = new List<CameraOption>();
+    private readonly List<ScreenSelectorBinding> screenSelectorBindings =
+        new List<ScreenSelectorBinding>();
     private bool hasAudienceCamera;
+
+    private sealed class CameraOption
+    {
+        public string streamId;
+        public string displayName;
+    }
+
+    private sealed class ScreenSelectorBinding
+    {
+        public VideoDisplayScreen screen;
+        public string displayLabel;
+        public TMP_Dropdown dropdown;
+        public UnityAction<int> listener;
+        public bool ownsDropdown;
+    }
 
     private void Awake()
     {
         CreateRuntimeAudioControlsIfNeeded();
-
-        if (cameraDropdown != null)
-        {
-            cameraDropdown.onValueChanged.AddListener(OnCameraSelected);
-        }
 
         if (startButton != null)
         {
@@ -86,6 +108,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     private void Start()
     {
+        TryFindVideoReceiver();
         RefreshActorMicrophoneList();
         TryFindActorAudioEndpoint();
         SubscribeToActorAudioEndpoint();
@@ -93,16 +116,24 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     private void OnEnable()
     {
+        VideoDisplayScreen.RegistryChanged -= OnDisplayScreenRegistryChanged;
+        VideoDisplayScreen.RegistryChanged += OnDisplayScreenRegistryChanged;
+
         TryFindControlHub();
+        TryFindVideoReceiver();
         TryFindActorAudioEndpoint();
         SubscribeToActorAudioEndpoint();
 
         RefreshActorMicrophoneList();
         RequestAudienceMicrophoneList();
+        RebuildScreenSelectors();
     }
 
     private void OnDisable()
     {
+        VideoDisplayScreen.RegistryChanged -= OnDisplayScreenRegistryChanged;
+        UnsubscribeFromVideoReceiver();
+
         if (requestAudienceMicListCoroutine != null)
         {
             StopCoroutine(requestAudienceMicListCoroutine);
@@ -114,10 +145,9 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (cameraDropdown != null)
-        {
-            cameraDropdown.onValueChanged.RemoveListener(OnCameraSelected);
-        }
+        VideoDisplayScreen.RegistryChanged -= OnDisplayScreenRegistryChanged;
+        UnsubscribeFromVideoReceiver();
+        ClearScreenSelectorBindings();
 
         if (startButton != null)
         {
@@ -174,6 +204,59 @@ public class PerformerWebcamControlPanel : MonoBehaviour
         Debug.Log("PerformerWebcamControlPanel: NetworkWebcamControlHub found.");
     }
 
+    private void TryFindVideoReceiver()
+    {
+        WebRtcVideoReceiver found =
+            FindFirstObjectByType<WebRtcVideoReceiver>(FindObjectsInactive.Include);
+
+        if (found == videoReceiver)
+        {
+            SubscribeToVideoReceiver();
+            return;
+        }
+
+        UnsubscribeFromVideoReceiver();
+        videoReceiver = found;
+        SubscribeToVideoReceiver();
+    }
+
+    private void SubscribeToVideoReceiver()
+    {
+        if (videoReceiver == null)
+            return;
+
+        videoReceiver.AvailableStreamsChanged -= OnAvailableStreamsChanged;
+        videoReceiver.AvailableStreamsChanged += OnAvailableStreamsChanged;
+        videoReceiver.DisplayScreensChanged -= OnReceiverDisplayScreensChanged;
+        videoReceiver.DisplayScreensChanged += OnReceiverDisplayScreensChanged;
+    }
+
+    private void UnsubscribeFromVideoReceiver()
+    {
+        if (videoReceiver == null)
+            return;
+
+        videoReceiver.AvailableStreamsChanged -= OnAvailableStreamsChanged;
+        videoReceiver.DisplayScreensChanged -= OnReceiverDisplayScreensChanged;
+    }
+
+    private void OnAvailableStreamsChanged()
+    {
+        RefreshEffectiveCameraOptions();
+        RebuildScreenSelectors();
+    }
+
+    private void OnReceiverDisplayScreensChanged()
+    {
+        RebuildScreenSelectors();
+    }
+
+    private void OnDisplayScreenRegistryChanged()
+    {
+        TryFindVideoReceiver();
+        RebuildScreenSelectors();
+    }
+
     private void TryFindActorAudioEndpoint()
     {
         if (actorAudioEndpoint != null)
@@ -224,66 +307,313 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     // Video Camera UI
     // =========================
 
-    public void SetCameraList(string[] cameraNames)
+    private void RefreshEffectiveCameraOptions()
+    {
+        effectiveCameraOptions.Clear();
+
+        if (videoReceiver != null && videoReceiver.AvailableStreams.Count > 0)
+        {
+            for (int i = 0; i < videoReceiver.AvailableStreams.Count; i++)
+            {
+                VideoStreamDescriptor descriptor = videoReceiver.AvailableStreams[i];
+                if (descriptor == null || string.IsNullOrEmpty(descriptor.streamId))
+                    continue;
+
+                effectiveCameraOptions.Add(new CameraOption
+                {
+                    streamId = descriptor.streamId,
+                    displayName = string.IsNullOrWhiteSpace(descriptor.deviceName)
+                        ? "Audience Camera " + (i + 1)
+                        : descriptor.deviceName
+                });
+            }
+        }
+        else
+        {
+            effectiveCameraOptions.AddRange(reportedCameraOptions);
+        }
+
+        hasAudienceCamera = effectiveCameraOptions.Count > 0;
+    }
+
+    private void RebuildScreenSelectors()
     {
         if (cameraDropdown == null)
         {
-            Debug.LogError("PerformerWebcamControlPanel: cameraDropdown is NULL. Cannot display audience camera list.");
+            Debug.LogError(
+                "PerformerWebcamControlPanel: cameraDropdown is NULL. " +
+                "Cannot build per-screen camera selectors."
+            );
             return;
         }
 
-        cameraDropdown.ClearOptions();
+        RectTransform templateRect = cameraDropdown.transform as RectTransform;
+        if (templateRect != null && templateRect.sizeDelta.x < 220f)
+            templateRect.sizeDelta = new Vector2(220f, templateRect.sizeDelta.y);
+
+        if (cameraDropdown.captionText != null)
+        {
+            cameraDropdown.captionText.enableAutoSizing = true;
+            cameraDropdown.captionText.fontSizeMin = 10f;
+        }
+
+        ClearScreenSelectorBindings();
+
+        List<VideoDisplayScreen> screens = new List<VideoDisplayScreen>();
+        if (videoReceiver != null && videoReceiver.DisplayScreens.Count > 0)
+        {
+            screens.AddRange(videoReceiver.DisplayScreens);
+        }
+        else
+        {
+            screens.AddRange(
+                FindObjectsByType<VideoDisplayScreen>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None
+                )
+            );
+            screens.Sort((left, right) =>
+                string.Compare(left.ScreenId, right.ScreenId, StringComparison.Ordinal));
+        }
+
+        screens.RemoveAll(screen => screen == null || !screen.isActiveAndEnabled);
+
+        if (screens.Count == 0)
+        {
+            cameraDropdown.gameObject.SetActive(true);
+            cameraDropdown.ClearOptions();
+            cameraDropdown.AddOptions(new List<string> { "No video display screen found" });
+            cameraDropdown.SetValueWithoutNotify(0);
+            cameraDropdown.RefreshShownValue();
+            cameraDropdown.interactable = false;
+            UpdateVideoButtonsForCurrentState();
+            return;
+        }
+
+        for (int i = 0; i < screens.Count; i++)
+        {
+            TMP_Dropdown dropdown = i == 0
+                ? cameraDropdown
+                : CreateScreenSelectorDropdown(i);
+
+            if (dropdown == null)
+                continue;
+
+            VideoDisplayScreen screen = screens[i];
+            ScreenSelectorBinding binding = new ScreenSelectorBinding
+            {
+                screen = screen,
+                displayLabel = BuildUniqueScreenLabel(screens, i),
+                dropdown = dropdown,
+                ownsDropdown = i > 0
+            };
+
+            ConfigureScreenSelector(binding, i);
+            ScreenSelectorBinding capturedBinding = binding;
+            binding.listener = value => ApplyScreenCameraSelection(capturedBinding, value);
+            dropdown.onValueChanged.AddListener(binding.listener);
+            screenSelectorBindings.Add(binding);
+        }
+
+        UpdateVideoButtonsForCurrentState();
+    }
+
+    private void ConfigureScreenSelector(ScreenSelectorBinding binding, int screenIndex)
+    {
+        TMP_Dropdown dropdown = binding.dropdown;
+        VideoDisplayScreen screen = binding.screen;
+        dropdown.gameObject.SetActive(true);
+        dropdown.ClearOptions();
+
+        if (effectiveCameraOptions.Count == 0)
+        {
+            string placeholder = reportedCameraOptions.Count == 0
+                ? "Waiting for audience cameras..."
+                : "No usable audience camera";
+            dropdown.AddOptions(new List<string> { binding.displayLabel + ": " + placeholder });
+            dropdown.SetValueWithoutNotify(0);
+            dropdown.RefreshShownValue();
+            dropdown.interactable = false;
+            return;
+        }
+
+        List<string> labels = new List<string>(effectiveCameraOptions.Count);
+        for (int i = 0; i < effectiveCameraOptions.Count; i++)
+        {
+            labels.Add(binding.displayLabel + ": " + effectiveCameraOptions[i].displayName);
+        }
+        dropdown.AddOptions(labels);
+
+        int selectedIndex = FindCameraOptionIndex(screen.SelectedStreamId);
+        if (selectedIndex < 0)
+            selectedIndex = screenIndex % effectiveCameraOptions.Count;
+
+        dropdown.SetValueWithoutNotify(selectedIndex);
+        dropdown.RefreshShownValue();
+        dropdown.interactable = hasAudienceCamera;
+
+        ApplyScreenCameraSelection(binding, selectedIndex);
+    }
+
+    private static string BuildUniqueScreenLabel(
+        IReadOnlyList<VideoDisplayScreen> screens,
+        int screenIndex)
+    {
+        VideoDisplayScreen target = screens[screenIndex];
+        string baseName = target.DisplayName;
+        int sameNameCount = 0;
+        int occurrence = 0;
+
+        for (int i = 0; i < screens.Count; i++)
+        {
+            if (!string.Equals(screens[i].DisplayName, baseName, StringComparison.Ordinal))
+                continue;
+
+            sameNameCount++;
+            if (i <= screenIndex)
+                occurrence++;
+        }
+
+        return sameNameCount > 1 ? baseName + " #" + occurrence : baseName;
+    }
+
+    private TMP_Dropdown CreateScreenSelectorDropdown(int screenIndex)
+    {
+        TMP_Dropdown clone = Instantiate(cameraDropdown, cameraDropdown.transform.parent);
+        clone.name = "Video Screen Camera Selector " + (screenIndex + 1);
+        clone.onValueChanged = new TMP_Dropdown.DropdownEvent();
+
+        RectTransform sourceRect = cameraDropdown.transform as RectTransform;
+        RectTransform cloneRect = clone.transform as RectTransform;
+        if (sourceRect != null && cloneRect != null)
+        {
+            int rows = Mathf.Max(1, selectorRowsPerColumn);
+            int row = screenIndex % rows;
+            int column = screenIndex / rows;
+            cloneRect.anchoredPosition = sourceRect.anchoredPosition + new Vector2(
+                selectorColumnSpacing * column,
+                selectorRowSpacing * row
+            );
+        }
+
+        return clone;
+    }
+
+    private void ClearScreenSelectorBindings()
+    {
+        for (int i = 0; i < screenSelectorBindings.Count; i++)
+        {
+            ScreenSelectorBinding binding = screenSelectorBindings[i];
+            if (binding.dropdown != null && binding.listener != null)
+                binding.dropdown.onValueChanged.RemoveListener(binding.listener);
+
+            if (binding.ownsDropdown && binding.dropdown != null)
+                Destroy(binding.dropdown.gameObject);
+        }
+
+        screenSelectorBindings.Clear();
+    }
+
+    private int FindCameraOptionIndex(string streamId)
+    {
+        if (string.IsNullOrEmpty(streamId))
+            return -1;
+
+        for (int i = 0; i < effectiveCameraOptions.Count; i++)
+        {
+            if (effectiveCameraOptions[i].streamId == streamId)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private void ApplyScreenCameraSelection(ScreenSelectorBinding binding, int optionIndex)
+    {
+        if (binding == null ||
+            binding.screen == null ||
+            optionIndex < 0 ||
+            optionIndex >= effectiveCameraOptions.Count)
+        {
+            return;
+        }
+
+        CameraOption option = effectiveCameraOptions[optionIndex];
+        if (screenSelectorBindings.Count > 0 && binding == screenSelectorBindings[0])
+            selectedCameraIndex = optionIndex;
+
+        TryFindVideoReceiver();
+        if (videoReceiver != null)
+            videoReceiver.SetScreenStream(binding.screen, option.streamId);
+        else
+            binding.screen.SelectStream(option.streamId);
+
+        Debug.Log(
+            "PerformerWebcamControlPanel: Screen '" + binding.screen.DisplayName +
+            "' selected camera '" + option.displayName + "'."
+        );
+    }
+
+    private void UpdateVideoButtonsForCurrentState()
+    {
+        WebRtcVideoReceiver.SessionState state = videoReceiver != null
+            ? videoReceiver.State
+            : WebRtcVideoReceiver.SessionState.Idle;
+
+        bool idleOrFailed =
+            state == WebRtcVideoReceiver.SessionState.Idle ||
+            state == WebRtcVideoReceiver.SessionState.Failed;
+        bool canStop =
+            state == WebRtcVideoReceiver.SessionState.Negotiating ||
+            state == WebRtcVideoReceiver.SessionState.Connecting ||
+            state == WebRtcVideoReceiver.SessionState.Connected ||
+            state == WebRtcVideoReceiver.SessionState.Recovering;
+
+        if (startButton != null)
+            startButton.interactable = idleOrFailed && hasAudienceCamera;
+        if (stopButton != null)
+            stopButton.interactable = canStop;
+    }
+
+    public void SetCameraList(string[] cameraNames)
+    {
+        reportedCameraOptions.Clear();
 
         if (cameraNames == null || cameraNames.Length == 0)
         {
-            cameraDropdown.AddOptions(new List<string>
-            {
-                "No audience camera found"
-            });
-
             selectedCameraIndex = 0;
-            cameraDropdown.value = 0;
-            cameraDropdown.RefreshShownValue();
-
-            if (startButton != null)
-                startButton.interactable = false;
-
-            if (stopButton != null)
-                stopButton.interactable = false;
-
             hasAudienceCamera = false;
-
+            RefreshEffectiveCameraOptions();
+            RebuildScreenSelectors();
+            UpdateVideoButtonsForCurrentState();
             return;
         }
 
-        cameraDropdown.AddOptions(new List<string>(cameraNames));
+        for (int i = 0; i < cameraNames.Length; i++)
+        {
+            reportedCameraOptions.Add(new CameraOption
+            {
+                streamId = "camera-" + i,
+                displayName = string.IsNullOrWhiteSpace(cameraNames[i])
+                    ? "Audience Camera " + (i + 1)
+                    : cameraNames[i]
+            });
+        }
 
         selectedCameraIndex = 0;
-        cameraDropdown.value = 0;
-        cameraDropdown.RefreshShownValue();
-
-        if (startButton != null)
-            startButton.interactable = true;
-
-        if (stopButton != null)
-            stopButton.interactable = false;
-
         hasAudienceCamera = true;
+        RefreshEffectiveCameraOptions();
+        RebuildScreenSelectors();
+        UpdateVideoButtonsForCurrentState();
 
         Debug.Log("PerformerWebcamControlPanel: Audience camera list updated. Count = " + cameraNames.Length);
     }
 
     private void SetWaitingState()
     {
-        if (cameraDropdown != null)
-        {
-            cameraDropdown.ClearOptions();
-            cameraDropdown.AddOptions(new List<string>
-            {
-                "Waiting for audience camera list..."
-            });
-            cameraDropdown.RefreshShownValue();
-        }
+        reportedCameraOptions.Clear();
+        effectiveCameraOptions.Clear();
+        RebuildScreenSelectors();
 
         if (startButton != null)
             startButton.interactable = false;
@@ -298,7 +628,8 @@ public class PerformerWebcamControlPanel : MonoBehaviour
     {
         selectedCameraIndex = index;
 
-        Debug.Log("PerformerWebcamControlPanel: Camera selected. Index = " + selectedCameraIndex);
+        if (screenSelectorBindings.Count > 0)
+            ApplyScreenCameraSelection(screenSelectorBindings[0], index);
     }
 
     public void OnStartClicked()
@@ -311,9 +642,9 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             return;
         }
 
-        Debug.Log("Performer requested Start Audience Video. Camera index: " + selectedCameraIndex);
+        Debug.Log("Performer requested all Audience camera streams.");
 
-        controlHub.RequestStartAudienceVideo(selectedCameraIndex);
+        controlHub.RequestStartAllAudienceVideo();
     }
 
     public void OnStopClicked()
@@ -343,8 +674,12 @@ public class PerformerWebcamControlPanel : MonoBehaviour
             state == WebRtcVideoReceiver.SessionState.Connected ||
             state == WebRtcVideoReceiver.SessionState.Recovering;
 
-        if (cameraDropdown != null)
-            cameraDropdown.interactable = idleOrFailed && hasAudienceCamera;
+        for (int i = 0; i < screenSelectorBindings.Count; i++)
+        {
+            TMP_Dropdown dropdown = screenSelectorBindings[i].dropdown;
+            if (dropdown != null)
+                dropdown.interactable = hasAudienceCamera && effectiveCameraOptions.Count > 0;
+        }
 
         if (startButton != null)
             startButton.interactable = idleOrFailed && hasAudienceCamera;

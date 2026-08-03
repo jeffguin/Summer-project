@@ -38,8 +38,6 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
     [SerializeField] private float stopAckTimeoutSeconds = 2f;
 
     private RTCPeerConnection peerConnection;
-    private VideoStreamTrack remoteVideoTrack;
-    private Texture currentRemoteTexture;
     private Coroutine signalHubCoroutine;
     private Coroutine operationCoroutine;
     private Coroutine connectionTimeoutCoroutine;
@@ -52,18 +50,25 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
     private bool firstFrameReceived;
     private bool connectedSignalSent;
     private bool isCleaningUp;
-    private float lastRemoteFrameTime;
     private string activeSessionId = "";
     private PlayerRef remotePlayer = PlayerRef.None;
 
     private readonly Queue<IceSignal> pendingRemoteCandidates = new Queue<IceSignal>();
+    private readonly List<VideoDisplayScreen> displayScreens = new List<VideoDisplayScreen>();
+    private readonly List<VideoStreamDescriptor> availableStreams = new List<VideoStreamDescriptor>();
+    private readonly Dictionary<string, RemoteVideoStream> remoteStreams =
+        new Dictionary<string, RemoteVideoStream>();
 
     public event Action<SessionState, string> StateChanged;
+    public event Action AvailableStreamsChanged;
+    public event Action DisplayScreensChanged;
 
     public SessionState State { get; private set; } = SessionState.Idle;
     public string ActiveSessionId => activeSessionId;
     public PlayerRef RemotePlayer => remotePlayer;
     public bool IsConnected => State == SessionState.Connected;
+    public IReadOnlyList<VideoStreamDescriptor> AvailableStreams => availableStreams;
+    public IReadOnlyList<VideoDisplayScreen> DisplayScreens => displayScreens;
 
     [Serializable]
     private sealed class SessionSignal
@@ -72,6 +77,17 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         public string sdp;
         public string errorCode;
         public string message;
+        public VideoStreamDescriptor[] tracks;
+    }
+
+    private sealed class RemoteVideoStream
+    {
+        public VideoStreamDescriptor descriptor;
+        public VideoStreamTrack track;
+        public OnVideoReceived videoHandler;
+        public Texture texture;
+        public float lastFrameTime;
+        public bool firstFrameReceived;
     }
 
     [Serializable]
@@ -86,35 +102,71 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
     private void Awake()
     {
         WebRtcRuntimePump.EnsureExists();
-        ResolveVideoDisplayScreen();
+        RefreshDisplayScreens();
     }
 
     private void OnEnable()
     {
+        VideoDisplayScreen.RegistryChanged -= OnDisplayScreenRegistryChanged;
+        VideoDisplayScreen.RegistryChanged += OnDisplayScreenRegistryChanged;
+        RefreshDisplayScreens();
+
         if (signalHubCoroutine == null)
             signalHubCoroutine = StartCoroutine(WaitForSignalHub());
     }
 
     private void Update()
     {
-        if (State == SessionState.Connected &&
-            lastRemoteFrameTime > 0f &&
-            Time.realtimeSinceStartup - lastRemoteFrameTime > Mathf.Max(1f, remoteFrameTimeoutSeconds))
+        if (State != SessionState.Connected)
+            return;
+
+        float now = Time.realtimeSinceStartup;
+        foreach (RemoteVideoStream stream in remoteStreams.Values)
         {
-            Fail("RemoteFrameTimeout", "The remote camera stopped delivering video frames.", true);
+            if (!stream.firstFrameReceived || stream.lastFrameTime <= 0f)
+                continue;
+
+            if (now - stream.lastFrameTime > Mathf.Max(1f, remoteFrameTimeoutSeconds))
+            {
+                Fail(
+                    "RemoteFrameTimeout",
+                    "Camera '" + stream.descriptor.deviceName +
+                    "' stopped delivering video frames.",
+                    true
+                );
+                return;
+            }
         }
     }
 
-    private void ResolveVideoDisplayScreen()
+    private void OnDisplayScreenRegistryChanged()
     {
-        if (videoDisplayScreen != null)
-            return;
+        RefreshDisplayScreens();
+    }
 
-        videoDisplayScreen =
-            FindFirstObjectByType<VideoDisplayScreen>(FindObjectsInactive.Include);
+    public void RefreshDisplayScreens()
+    {
+        VideoDisplayScreen[] found =
+            FindObjectsByType<VideoDisplayScreen>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None
+            );
 
-        if (videoDisplayScreen == null)
-            Debug.LogError("WebRtcVideoReceiver: VideoDisplayScreen is missing.");
+        displayScreens.Clear();
+        if (videoDisplayScreen != null && Array.IndexOf(found, videoDisplayScreen) < 0)
+            displayScreens.Add(videoDisplayScreen);
+
+        displayScreens.AddRange(found);
+        displayScreens.RemoveAll(screen => screen == null || !screen.isActiveAndEnabled);
+        displayScreens.Sort((left, right) =>
+            string.Compare(left.ScreenId, right.ScreenId, StringComparison.Ordinal));
+
+        AssignDefaultStreamsToUnassignedScreens();
+        ApplyAllTexturesToDisplays();
+        DisplayScreensChanged?.Invoke();
+
+        if (displayScreens.Count == 0)
+            Debug.LogWarning("WebRtcVideoReceiver: No VideoDisplayScreen is available.");
     }
 
     private IEnumerator WaitForSignalHub()
@@ -251,6 +303,8 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
     private IEnumerator HandleOfferRoutine(SessionSignal signal)
     {
+        ApplyStreamDescriptors(signal.tracks);
+
         if (!CreatePeerConnection())
         {
             operationCoroutine = null;
@@ -385,7 +439,12 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         peerConnection.OnTrack = trackEvent =>
         {
             if (trackEvent.Track is VideoStreamTrack videoTrack)
-                AttachRemoteVideoTrack(videoTrack);
+            {
+                string mid = trackEvent.Transceiver != null
+                    ? trackEvent.Transceiver.Mid
+                    : "";
+                AttachRemoteVideoTrack(videoTrack, mid);
+            }
             else
                 Debug.LogWarning("WebRtcVideoReceiver: Received a non-video track.");
         };
@@ -431,51 +490,134 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         };
     }
 
-    private void AttachRemoteVideoTrack(VideoStreamTrack videoTrack)
+    private void ApplyStreamDescriptors(VideoStreamDescriptor[] descriptors)
+    {
+        availableStreams.Clear();
+        remoteStreams.Clear();
+
+        if (descriptors == null || descriptors.Length == 0)
+        {
+            descriptors = new[]
+            {
+                new VideoStreamDescriptor
+                {
+                    streamId = "camera-0",
+                    cameraIndex = 0,
+                    deviceName = "Audience Camera",
+                    trackId = "",
+                    mid = ""
+                }
+            };
+        }
+
+        for (int i = 0; i < descriptors.Length; i++)
+        {
+            VideoStreamDescriptor descriptor = descriptors[i];
+            if (descriptor == null)
+                continue;
+
+            VideoStreamDescriptor copy = descriptor.Clone();
+            if (string.IsNullOrEmpty(copy.streamId))
+                copy.streamId = "camera-" + Mathf.Max(0, copy.cameraIndex);
+            if (string.IsNullOrEmpty(copy.deviceName))
+                copy.deviceName = "Audience Camera " + (i + 1);
+
+            if (remoteStreams.ContainsKey(copy.streamId))
+            {
+                Debug.LogWarning(
+                    "WebRtcVideoReceiver: Ignoring duplicate stream id '" + copy.streamId + "'."
+                );
+                continue;
+            }
+
+            availableStreams.Add(copy);
+            remoteStreams.Add(copy.streamId, new RemoteVideoStream { descriptor = copy });
+        }
+
+        AssignDefaultStreamsToUnassignedScreens();
+        AvailableStreamsChanged?.Invoke();
+    }
+
+    private void AttachRemoteVideoTrack(VideoStreamTrack videoTrack, string mid)
     {
         if (videoTrack == null)
             return;
 
-        if (remoteVideoTrack != null && remoteVideoTrack != videoTrack)
+        RemoteVideoStream stream = ResolveRemoteStream(videoTrack.Id, mid);
+        if (stream == null)
         {
-            remoteVideoTrack.OnVideoReceived -= OnRemoteVideoReceived;
-            remoteVideoTrack.Dispose();
+            Debug.LogWarning(
+                "WebRtcVideoReceiver: Could not map remote track '" + videoTrack.Id +
+                "' (MID '" + mid + "') to a camera descriptor."
+            );
+            videoTrack.Dispose();
+            return;
         }
 
-        remoteVideoTrack = videoTrack;
-        remoteVideoTrack.OnVideoReceived -= OnRemoteVideoReceived;
-        remoteVideoTrack.OnVideoReceived += OnRemoteVideoReceived;
-        SetState(SessionState.Connecting, "Remote video track received; waiting for the first frame.");
+        if (stream.track != null && stream.track != videoTrack)
+        {
+            if (stream.videoHandler != null)
+                stream.track.OnVideoReceived -= stream.videoHandler;
+            stream.track.Dispose();
+        }
+
+        stream.track = videoTrack;
+        RemoteVideoStream capturedStream = stream;
+        stream.videoHandler = texture => OnRemoteVideoReceived(capturedStream, texture);
+        stream.track.OnVideoReceived += stream.videoHandler;
+
+        SetState(
+            SessionState.Connecting,
+            "Remote track received for '" + stream.descriptor.deviceName +
+            "'; waiting for its first frame."
+        );
     }
 
-    private void OnRemoteVideoReceived(Texture texture)
+    private RemoteVideoStream ResolveRemoteStream(string trackId, string mid)
     {
-        if (texture == null || texture.width <= 0 || texture.height <= 0)
-            return;
+        RemoteVideoStream fallback = null;
 
-        lastRemoteFrameTime = Time.realtimeSinceStartup;
-
-        ResolveVideoDisplayScreen();
-        if (videoDisplayScreen == null)
+        foreach (RemoteVideoStream stream in remoteStreams.Values)
         {
-            Fail("DisplayMissing", "VideoDisplayScreen is unavailable.", true);
-            return;
+            if (stream.track != null)
+                continue;
+
+            if (!string.IsNullOrEmpty(mid) && stream.descriptor.mid == mid)
+                return stream;
+
+            if (!string.IsNullOrEmpty(trackId) && stream.descriptor.trackId == trackId)
+                return stream;
+
+            fallback ??= stream;
         }
 
-        if (currentRemoteTexture != texture)
-        {
-            currentRemoteTexture = texture;
-            videoDisplayScreen.SetTexture(texture);
-        }
+        return fallback;
+    }
 
-        if (!firstFrameReceived)
+    private void OnRemoteVideoReceived(RemoteVideoStream stream, Texture texture)
+    {
+        if (stream == null || texture == null || texture.width <= 0 || texture.height <= 0)
+            return;
+
+        stream.lastFrameTime = Time.realtimeSinceStartup;
+        bool textureChanged = stream.texture != texture;
+        stream.texture = texture;
+
+        if (textureChanged)
+            ApplyTextureToSelectedDisplays(stream.descriptor.streamId, texture);
+
+        if (!stream.firstFrameReceived)
         {
-            firstFrameReceived = true;
+            stream.firstFrameReceived = true;
             Debug.Log(
-                "WebRtcVideoReceiver: First remote frame received. Size = " +
+                "WebRtcVideoReceiver: First remote frame received for '" +
+                stream.descriptor.deviceName + "'. Size = " +
                 texture.width + "x" + texture.height
             );
         }
+
+        if (!firstFrameReceived)
+            firstFrameReceived = true;
 
         TryMarkConnected();
     }
@@ -498,6 +640,90 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
         if (State != SessionState.Connected)
             SetState(SessionState.Connected, "ICE connected and the first remote video frame is visible.");
+    }
+
+    public void SetScreenStream(VideoDisplayScreen screen, string streamId)
+    {
+        if (screen == null)
+            return;
+
+        screen.SelectStream(streamId);
+
+        if (!string.IsNullOrEmpty(streamId) &&
+            remoteStreams.TryGetValue(streamId, out RemoteVideoStream stream) &&
+            stream.texture != null)
+        {
+            screen.SetTexture(stream.texture);
+        }
+        else
+        {
+            screen.ClearTexture();
+        }
+
+        Debug.Log(
+            "WebRtcVideoReceiver: Screen '" + screen.DisplayName +
+            "' selected stream '" + streamId + "'."
+        );
+    }
+
+    private void AssignDefaultStreamsToUnassignedScreens()
+    {
+        if (availableStreams.Count == 0)
+            return;
+
+        for (int i = 0; i < displayScreens.Count; i++)
+        {
+            VideoDisplayScreen screen = displayScreens[i];
+            if (screen == null)
+                continue;
+
+            bool selectionExists = false;
+            for (int streamIndex = 0; streamIndex < availableStreams.Count; streamIndex++)
+            {
+                if (availableStreams[streamIndex].streamId == screen.SelectedStreamId)
+                {
+                    selectionExists = true;
+                    break;
+                }
+            }
+
+            if (!selectionExists)
+            {
+                VideoStreamDescriptor defaultStream = availableStreams[i % availableStreams.Count];
+                screen.SelectStream(defaultStream.streamId);
+            }
+        }
+    }
+
+    private void ApplyAllTexturesToDisplays()
+    {
+        for (int i = 0; i < displayScreens.Count; i++)
+        {
+            VideoDisplayScreen screen = displayScreens[i];
+            if (screen == null)
+                continue;
+
+            if (!string.IsNullOrEmpty(screen.SelectedStreamId) &&
+                remoteStreams.TryGetValue(screen.SelectedStreamId, out RemoteVideoStream stream) &&
+                stream.texture != null)
+            {
+                screen.SetTexture(stream.texture);
+            }
+            else
+            {
+                screen.ClearTexture();
+            }
+        }
+    }
+
+    private void ApplyTextureToSelectedDisplays(string streamId, Texture texture)
+    {
+        for (int i = 0; i < displayScreens.Count; i++)
+        {
+            VideoDisplayScreen screen = displayScreens[i];
+            if (screen != null && screen.SelectedStreamId == streamId)
+                screen.SetTexture(texture);
+        }
     }
 
     private void HandleRemoteCandidate(IceSignal signal)
@@ -717,19 +943,28 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         iceConnected = false;
         firstFrameReceived = false;
         connectedSignalSent = false;
-        currentRemoteTexture = null;
-        lastRemoteFrameTime = 0f;
         pendingRemoteCandidates.Clear();
 
-        if (videoDisplayScreen != null)
-            videoDisplayScreen.ClearTexture();
-
-        if (remoteVideoTrack != null)
+        for (int i = 0; i < displayScreens.Count; i++)
         {
-            remoteVideoTrack.OnVideoReceived -= OnRemoteVideoReceived;
-            remoteVideoTrack.Dispose();
-            remoteVideoTrack = null;
+            if (displayScreens[i] != null)
+                displayScreens[i].ClearTexture();
         }
+
+        foreach (RemoteVideoStream stream in remoteStreams.Values)
+        {
+            if (stream.track == null)
+                continue;
+
+            if (stream.videoHandler != null)
+                stream.track.OnVideoReceived -= stream.videoHandler;
+
+            stream.track.Dispose();
+        }
+
+        remoteStreams.Clear();
+        availableStreams.Clear();
+        AvailableStreamsChanged?.Invoke();
 
         if (peerConnection != null)
         {
@@ -817,6 +1052,8 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
     private void OnDisable()
     {
+        VideoDisplayScreen.RegistryChanged -= OnDisplayScreenRegistryChanged;
+
         if (signalHubCoroutine != null)
         {
             StopCoroutine(signalHubCoroutine);
@@ -832,6 +1069,8 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
     private void OnDestroy()
     {
+        VideoDisplayScreen.RegistryChanged -= OnDisplayScreenRegistryChanged;
+
         if (signalHubSubscribed && WebRtcSignalHub.Instance != null)
             WebRtcSignalHub.Instance.OnSignalReceived -= OnSignalReceived;
 

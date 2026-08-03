@@ -53,8 +53,6 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
     [SerializeField] private float stopAckTimeoutSeconds = 2f;
 
     private RTCPeerConnection peerConnection;
-    private VideoStreamTrack videoTrack;
-    private RTCRtpSender localVideoSender;
     private Coroutine operationCoroutine;
     private Coroutine signalHubCoroutine;
     private Coroutine connectionTimeoutCoroutine;
@@ -66,11 +64,11 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
     private bool iceConnected;
     private bool remoteFrameConfirmed;
     private bool isCleaningUp;
-    private float lastCameraFrameTime;
     private string activeSessionId = "";
     private PlayerRef remotePlayer = PlayerRef.None;
 
     private readonly Queue<IceSignal> pendingRemoteCandidates = new Queue<IceSignal>();
+    private readonly List<LocalVideoStream> localVideoStreams = new List<LocalVideoStream>();
 
     public event Action<SessionState, string> StateChanged;
 
@@ -86,6 +84,16 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
         public string sdp;
         public string errorCode;
         public string message;
+        public VideoStreamDescriptor[] tracks;
+    }
+
+    private sealed class LocalVideoStream
+    {
+        public LocalWebcamManager.CameraCapture capture;
+        public VideoStreamTrack track;
+        public RTCRtpSender sender;
+        public VideoStreamDescriptor descriptor;
+        public float lastFrameTime;
     }
 
     [Serializable]
@@ -113,12 +121,8 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
 
     private void Update()
     {
-        if (string.IsNullOrEmpty(activeSessionId) || localWebcamManager == null)
+        if (string.IsNullOrEmpty(activeSessionId) || localVideoStreams.Count == 0)
             return;
-
-        WebCamTexture webcamTexture = localWebcamManager.GetCurrentWebcamTexture();
-        if (webcamTexture != null && webcamTexture.didUpdateThisFrame)
-            lastCameraFrameTime = Time.realtimeSinceStartup;
 
         bool shouldMonitorFrames =
             State == SessionState.LocalTrackReady ||
@@ -127,11 +131,31 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
             State == SessionState.Connected ||
             State == SessionState.Recovering;
 
-        if (shouldMonitorFrames &&
-            lastCameraFrameTime > 0f &&
-            Time.realtimeSinceStartup - lastCameraFrameTime > Mathf.Max(1f, cameraStallTimeoutSeconds))
+        if (!shouldMonitorFrames)
+            return;
+
+        float now = Time.realtimeSinceStartup;
+        for (int i = 0; i < localVideoStreams.Count; i++)
         {
-            Fail("CameraFrameStalled", "The selected camera stopped producing frames.", true);
+            LocalVideoStream stream = localVideoStreams[i];
+            WebCamTexture texture = stream.capture != null ? stream.capture.Texture : null;
+
+            if (texture != null && texture.didUpdateThisFrame)
+                stream.lastFrameTime = now;
+
+            if (stream.lastFrameTime > 0f &&
+                now - stream.lastFrameTime > Mathf.Max(1f, cameraStallTimeoutSeconds))
+            {
+                string cameraName = stream.descriptor != null
+                    ? stream.descriptor.deviceName
+                    : "Unknown camera";
+                Fail(
+                    "CameraFrameStalled",
+                    "Camera '" + cameraName + "' stopped producing frames.",
+                    true
+                );
+                return;
+            }
         }
     }
 
@@ -176,24 +200,22 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
             return;
         }
 
-        WebCamTexture currentTexture =
-            localWebcamManager != null ? localWebcamManager.GetCurrentWebcamTexture() : null;
-
-        if (currentTexture == null || !currentTexture.isPlaying)
-        {
-            Debug.LogWarning("WebRtcWebcamSender: Start the local webcam before using the test button.");
-            return;
-        }
-
-        BeginSession(Guid.NewGuid().ToString("N"), target, -1, false);
+        BeginSession(Guid.NewGuid().ToString("N"), target);
     }
 
+    public void StartWebcamStream(string sessionId, PlayerRef target)
+    {
+        BeginSession(sessionId, target);
+    }
+
+    // Compatibility overload for existing callers. Multi-camera sessions always
+    // start every usable Audience camera; the old camera index is intentionally ignored.
     public void StartWebcamStream(string sessionId, PlayerRef target, int cameraIndex)
     {
-        BeginSession(sessionId, target, cameraIndex, true);
+        BeginSession(sessionId, target);
     }
 
-    private void BeginSession(string sessionId, PlayerRef target, int cameraIndex, bool startCamera)
+    private void BeginSession(string sessionId, PlayerRef target)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -219,12 +241,12 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
         CleanupLocalSession("Preparing a new video session.", false);
         activeSessionId = sessionId;
         remotePlayer = target;
-        operationCoroutine = StartCoroutine(StartSenderRoutine(sessionId, cameraIndex, startCamera));
+        operationCoroutine = StartCoroutine(StartSenderRoutine(sessionId));
     }
 
-    private IEnumerator StartSenderRoutine(string sessionId, int cameraIndex, bool startCamera)
+    private IEnumerator StartSenderRoutine(string sessionId)
     {
-        SetState(SessionState.PreparingDevice, "Starting the selected camera.");
+        SetState(SessionState.PreparingDevice, "Starting all available Audience cameras.");
 
         if (localWebcamManager == null)
         {
@@ -233,26 +255,38 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
             yield break;
         }
 
-        if (startCamera && !localWebcamManager.TryStartCameraByIndex(cameraIndex, out string cameraError))
+        if (!localWebcamManager.TryStartAllCameras(
+                out IReadOnlyList<LocalWebcamManager.CameraCapture> startedCaptures,
+                out string cameraError))
         {
             operationCoroutine = null;
             Fail("CameraStartFailed", cameraError, true);
             yield break;
         }
 
-        WebCamTexture webcamTexture = localWebcamManager.GetCurrentWebcamTexture();
-        if (webcamTexture == null || !webcamTexture.isPlaying)
-        {
-            operationCoroutine = null;
-            Fail("CameraNotPlaying", "The selected camera did not start.", true);
-            yield break;
-        }
+        if (!string.IsNullOrEmpty(cameraError))
+            Debug.LogWarning("WebRtcWebcamSender: " + cameraError);
+
+        List<LocalWebcamManager.CameraCapture> pendingCaptures =
+            new List<LocalWebcamManager.CameraCapture>(startedCaptures);
+        List<LocalWebcamManager.CameraCapture> readyCaptures =
+            new List<LocalWebcamManager.CameraCapture>();
 
         float cameraDeadline = Time.realtimeSinceStartup + Mathf.Max(1f, cameraReadyTimeoutSeconds);
         while (sessionId == activeSessionId &&
-               !localWebcamManager.IsCurrentCameraReady &&
+               pendingCaptures.Count > 0 &&
                Time.realtimeSinceStartup < cameraDeadline)
         {
+            for (int i = pendingCaptures.Count - 1; i >= 0; i--)
+            {
+                LocalWebcamManager.CameraCapture capture = pendingCaptures[i];
+                if (!localWebcamManager.IsCameraReady(capture))
+                    continue;
+
+                readyCaptures.Add(capture);
+                pendingCaptures.RemoveAt(i);
+            }
+
             yield return null;
         }
 
@@ -262,18 +296,27 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
             yield break;
         }
 
-        if (!localWebcamManager.IsCurrentCameraReady)
+        for (int i = 0; i < pendingCaptures.Count; i++)
+        {
+            Debug.LogWarning(
+                "WebRtcWebcamSender: Camera did not become ready and will be skipped: " +
+                pendingCaptures[i].DeviceName
+            );
+            localWebcamManager.StopCapture(pendingCaptures[i]);
+        }
+
+        readyCaptures.Sort((left, right) => left.CameraIndex.CompareTo(right.CameraIndex));
+
+        if (readyCaptures.Count == 0)
         {
             operationCoroutine = null;
             Fail(
                 "CameraReadyTimeout",
-                "The camera did not provide a valid frame before the startup timeout.",
+                "No camera provided a valid frame before the startup timeout.",
                 true
             );
             yield break;
         }
-
-        lastCameraFrameTime = Time.realtimeSinceStartup;
 
         if (!CreatePeerConnection())
         {
@@ -282,28 +325,57 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
             yield break;
         }
 
-        try
+        for (int i = 0; i < readyCaptures.Count; i++)
         {
-            videoTrack = new VideoStreamTrack(webcamTexture);
-            localVideoSender = peerConnection.AddTrack(videoTrack);
-        }
-        catch (Exception exception)
-        {
-            operationCoroutine = null;
-            Fail("TrackCreationFailed", exception.Message, true);
-            yield break;
+            LocalWebcamManager.CameraCapture capture = readyCaptures[i];
+            VideoStreamTrack track = null;
+
+            try
+            {
+                track = new VideoStreamTrack(capture.Texture);
+                RTCRtpSender sender = peerConnection.AddTrack(track);
+                if (sender == null)
+                    throw new InvalidOperationException("The track sender is null.");
+
+                localVideoStreams.Add(new LocalVideoStream
+                {
+                    capture = capture,
+                    track = track,
+                    sender = sender,
+                    descriptor = new VideoStreamDescriptor
+                    {
+                        streamId = capture.StreamId,
+                        cameraIndex = capture.CameraIndex,
+                        deviceName = capture.DeviceName,
+                        trackId = track.Id,
+                        mid = ""
+                    },
+                    lastFrameTime = Time.realtimeSinceStartup
+                });
+            }
+            catch (Exception exception)
+            {
+                if (track != null)
+                    track.Dispose();
+
+                localWebcamManager.StopCapture(capture);
+                Debug.LogWarning(
+                    "WebRtcWebcamSender: Skipping camera '" + capture.DeviceName +
+                    "' because its WebRTC track could not be created: " + exception.Message
+                );
+            }
         }
 
-        if (localVideoSender == null)
+        if (localVideoStreams.Count == 0)
         {
             operationCoroutine = null;
-            Fail("TrackAddFailed", "The video track could not be added to the PeerConnection.", true);
+            Fail("TrackCreationFailed", "No usable camera track could be created.", true);
             yield break;
         }
 
         SetState(
             SessionState.LocalTrackReady,
-            "Camera track is ready: " + localWebcamManager.CurrentDeviceName + "."
+            localVideoStreams.Count + " camera track(s) are ready."
         );
 
         RTCSessionDescriptionAsyncOperation offerOperation = peerConnection.CreateOffer();
@@ -340,10 +412,17 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
             yield break;
         }
 
+        PopulateNegotiatedMids();
+
+        VideoStreamDescriptor[] descriptors = new VideoStreamDescriptor[localVideoStreams.Count];
+        for (int i = 0; i < localVideoStreams.Count; i++)
+            descriptors[i] = localVideoStreams[i].descriptor.Clone();
+
         SessionSignal signal = new SessionSignal
         {
             sessionId = activeSessionId,
-            sdp = offer.sdp
+            sdp = offer.sdp,
+            tracks = descriptors
         };
 
         if (!SendJson(remotePlayer, OfferType, JsonUtility.ToJson(signal)))
@@ -356,6 +435,43 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
         operationCoroutine = null;
         SetState(SessionState.Negotiating, "Video offer sent; waiting for the Actor answer.");
         StartConnectionTimeout(sessionId);
+    }
+
+    private void PopulateNegotiatedMids()
+    {
+        if (peerConnection == null)
+            return;
+
+        try
+        {
+            foreach (RTCRtpTransceiver transceiver in peerConnection.GetTransceivers())
+            {
+                MediaStreamTrack transceiverTrack =
+                    transceiver != null && transceiver.Sender != null
+                        ? transceiver.Sender.Track
+                        : null;
+
+                if (transceiverTrack == null)
+                    continue;
+
+                for (int i = 0; i < localVideoStreams.Count; i++)
+                {
+                    LocalVideoStream stream = localVideoStreams[i];
+                    if (stream.track == null || stream.track.Id != transceiverTrack.Id)
+                        continue;
+
+                    stream.descriptor.mid = transceiver.Mid ?? "";
+                    break;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                "WebRtcWebcamSender: Could not read negotiated video MIDs; " +
+                "track ids will be used as fallback. " + exception.Message
+            );
+        }
     }
 
     private bool CreatePeerConnection()
@@ -755,20 +871,25 @@ public sealed class WebRtcWebcamSender : MonoBehaviour
         remoteDescriptionSet = false;
         iceConnected = false;
         remoteFrameConfirmed = false;
-        lastCameraFrameTime = 0f;
         pendingRemoteCandidates.Clear();
 
-        if (peerConnection != null && localVideoSender != null)
+        if (peerConnection != null)
         {
-            peerConnection.RemoveTrack(localVideoSender);
-            localVideoSender = null;
+            for (int i = 0; i < localVideoStreams.Count; i++)
+            {
+                RTCRtpSender sender = localVideoStreams[i].sender;
+                if (sender != null)
+                    peerConnection.RemoveTrack(sender);
+            }
         }
 
-        if (videoTrack != null)
+        for (int i = 0; i < localVideoStreams.Count; i++)
         {
-            videoTrack.Dispose();
-            videoTrack = null;
+            VideoStreamTrack track = localVideoStreams[i].track;
+            if (track != null)
+                track.Dispose();
         }
+        localVideoStreams.Clear();
 
         if (peerConnection != null)
         {
