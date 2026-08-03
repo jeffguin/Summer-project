@@ -40,5 +40,13 @@ namespace Valve.VR
                 return SteamVR_Actions.newSet_righthandplace;
             }
         }
+        
+        public virtual SteamVR_Action_Pose NewAction2waist
+        {
+            get
+            {
+                return SteamVR_Actions.newSet_NewAction2waist;
+            }
+        }
     }
 }
