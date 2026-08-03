@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Meta.XR.Movement.Networking;
+using Meta.XR.Movement.Retargeting;
 #if FUSION2
 using Meta.XR.Movement.Networking.Fusion;
 #endif
@@ -552,6 +553,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         }
 
         ApplyOwnership();
+        ConfigureTrackingComponentsForOwnership();
 
         if (!EnsureRetargetingInitialized())
         {
@@ -606,6 +608,47 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                           NetworkCharacterRetargeter.Ownership.Host
             ? "LocalCharacter"
             : "RemoteCharacter";
+    }
+
+    private void ConfigureTrackingComponentsForOwnership()
+    {
+        bool isLocalTrackingSource =
+            _characterBehaviour.HasInputAuthority;
+
+        MetaSourceDataProvider[] bodySources =
+            _character.GetComponentsInChildren<MetaSourceDataProvider>(true);
+
+        foreach (MetaSourceDataProvider bodySource in bodySources)
+        {
+            bodySource.enabled = isLocalTrackingSource;
+        }
+
+        OVRFaceExpressions[] faceSources =
+            _character.GetComponentsInChildren<OVRFaceExpressions>(true);
+
+        foreach (OVRFaceExpressions faceSource in faceSources)
+        {
+            faceSource.enabled = isLocalTrackingSource;
+        }
+
+        if (isLocalTrackingSource)
+        {
+            return;
+        }
+
+        // The legacy OVR retargeter reads local device tracking and competes
+        // with network pose application. Remote avatars are driven solely by
+        // the deserialized 105-joint/31-shape stream.
+        OVRUnityHumanoidSkeletonRetargeter[] legacyRetargeters =
+            _character.GetComponentsInChildren<
+                OVRUnityHumanoidSkeletonRetargeter
+            >(true);
+
+        foreach (OVRUnityHumanoidSkeletonRetargeter legacyRetargeter in
+                 legacyRetargeters)
+        {
+            legacyRetargeter.enabled = false;
+        }
     }
 
     private bool EnsureRetargetingInitialized()

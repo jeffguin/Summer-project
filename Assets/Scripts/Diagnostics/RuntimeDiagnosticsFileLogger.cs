@@ -149,15 +149,19 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
         string stackTrace,
         UnityEngine.LogType type)
     {
-        bool isSpawnerLifecycleLog =
+        bool isLifecycleLog =
             type == UnityEngine.LogType.Log &&
             condition != null &&
-            condition.StartsWith(
-                "BasicSpawner:",
-                StringComparison.Ordinal
-            );
+            (condition.StartsWith(
+                 "BasicSpawner:",
+                 StringComparison.Ordinal
+             ) ||
+             condition.StartsWith(
+                 "ActorMovementNetworkHandler:",
+                 StringComparison.Ordinal
+             ));
 
-        if (type == UnityEngine.LogType.Log && !isSpawnerLifecycleLog)
+        if (type == UnityEngine.LogType.Log && !isLifecycleLog)
             return;
 
         string safeCondition = LimitAndFlatten(condition);
