@@ -634,6 +634,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             $"Owner={_networkCharacterRetargeter.Owner}, " +
             $"Joints={_bodyPose.Length}, " +
             $"FaceShapes={_configuredFaceShapeCount}, " +
+            $"ApplyData={_applyData}, " +
             $"UseInterpolation={_networkCharacterRetargeter.UseInterpolation}, " +
             $"StaleTimeout={_stalePacketTimeoutSeconds:F2}s, " +
             $"ValidatePose={_validateReceivedPose}.",

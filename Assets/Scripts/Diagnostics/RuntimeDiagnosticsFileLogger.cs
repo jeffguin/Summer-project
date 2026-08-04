@@ -5,6 +5,7 @@ using System.Text;
 using Fusion;
 using UnityEngine;
 using UnityEngine.Profiling;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 [DefaultExecutionOrder(-10000)]
@@ -30,6 +31,7 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
     private float frameElapsed;
     private int framesSinceHeartbeat;
     private bool shuttingDown;
+    private bool urpArrayConflictReported;
 
     private string criticalStage;
     private long criticalStageStartedAt;
@@ -96,6 +98,7 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
             };
 
             Application.logMessageReceivedThreaded += HandleUnityLog;
+            SceneManager.sceneLoaded += HandleSceneLoaded;
             criticalStageTimer = new System.Threading.Timer(
                 CheckCriticalStage,
                 null,
@@ -106,6 +109,10 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
             WriteLine(
                 $"START utc={DateTime.UtcNow:O} " +
                 $"platform={Application.platform} " +
+                $"buildTarget={GetBuildTargetName()} " +
+                $"graphicsApi={SystemInfo.graphicsDeviceType} " +
+                $"quality={GetQualityName()} " +
+                $"renderPipeline={GetRenderPipelineName()} " +
                 $"unity={Application.unityVersion} " +
                 $"product={Application.productName}"
             );
@@ -176,6 +183,19 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
         string stackTrace,
         UnityEngine.LogType type)
     {
+        if (type == UnityEngine.LogType.Warning &&
+            !urpArrayConflictReported &&
+            IsUrpArrayCapacityWarning(condition))
+        {
+            urpArrayConflictReported = true;
+            WriteLine(
+                $"RENDER_PIPELINE_ARRAY_CONFLICT " +
+                $"utc={DateTime.UtcNow:O} " +
+                "restartEditorRequired=true " +
+                "cause=build_target_array_capacity_mismatch"
+            );
+        }
+
         bool isLifecycleLog =
             type == UnityEngine.LogType.Log &&
             condition != null &&
@@ -210,6 +230,120 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
             $"suppressedDuplicates={suppressedDuplicates} " +
             $"stack={safeStackTrace}"
         );
+    }
+
+    private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        Camera[] cameras = FindObjectsByType<Camera>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None
+        );
+        Light[] lights = FindObjectsByType<Light>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None
+        );
+
+        int sceneCameraCount = 0;
+        int activeCameraCount = 0;
+        int sceneLightCount = 0;
+        var cameraSummary = new StringBuilder();
+
+        foreach (Camera camera in cameras)
+        {
+            if (camera.gameObject.scene != scene)
+                continue;
+
+            sceneCameraCount++;
+            bool isRendering =
+                camera.enabled && camera.gameObject.activeInHierarchy;
+
+            if (isRendering)
+                activeCameraCount++;
+
+            if (cameraSummary.Length > 0)
+                cameraSummary.Append('|');
+
+            cameraSummary.Append(LimitAndFlatten(camera.name));
+            cameraSummary.Append(':');
+            cameraSummary.Append(isRendering ? "rendering" : "inactive");
+            cameraSummary.Append(':');
+            cameraSummary.Append(camera.stereoTargetEye);
+            cameraSummary.Append(':');
+            cameraSummary.Append(
+                camera.targetTexture != null
+                    ? LimitAndFlatten(camera.targetTexture.name)
+                    : "display" + camera.targetDisplay
+            );
+        }
+
+        foreach (Light light in lights)
+        {
+            if (light.gameObject.scene == scene)
+                sceneLightCount++;
+        }
+
+        WriteLine(
+            $"RENDER_CONFIG utc={DateTime.UtcNow:O} " +
+            $"scene={scene.name} loadMode={mode} " +
+            $"buildTarget={GetBuildTargetName()} " +
+            $"graphicsApi={SystemInfo.graphicsDeviceType} " +
+            $"quality={GetQualityName()} " +
+            $"renderPipeline={GetRenderPipelineName()} " +
+            $"cameras={activeCameraCount}/{sceneCameraCount} " +
+            $"lights={sceneLightCount} cameraDetails={cameraSummary}"
+        );
+    }
+
+    private static bool IsUrpArrayCapacityWarning(string condition)
+    {
+        if (string.IsNullOrEmpty(condition) ||
+            condition.IndexOf(
+                "exceeds previous array size",
+                StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return false;
+        }
+
+        return condition.IndexOf(
+                   "urp_ReflProbes_",
+                   StringComparison.Ordinal) >= 0 ||
+               condition.IndexOf(
+                   "_AdditionalShadowParams",
+                   StringComparison.Ordinal) >= 0 ||
+               condition.IndexOf(
+                   "_AdditionalLights",
+                   StringComparison.Ordinal) >= 0;
+    }
+
+    private static string GetBuildTargetName()
+    {
+#if UNITY_EDITOR
+        return UnityEditor.EditorUserBuildSettings
+            .activeBuildTarget
+            .ToString();
+#else
+        return Application.platform.ToString();
+#endif
+    }
+
+    private static string GetQualityName()
+    {
+        string[] qualityNames = QualitySettings.names;
+        int qualityLevel = QualitySettings.GetQualityLevel();
+
+        return qualityLevel >= 0 && qualityLevel < qualityNames.Length
+            ? qualityNames[qualityLevel]
+            : qualityLevel.ToString();
+    }
+
+    private static string GetRenderPipelineName()
+    {
+        RenderPipelineAsset renderPipeline =
+            GraphicsSettings.currentRenderPipeline;
+
+        return renderPipeline != null
+            ? LimitAndFlatten(renderPipeline.name)
+            : "BuiltIn";
     }
 
     public static int BeginCriticalStage(string stage)
@@ -394,6 +528,7 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
 
             shuttingDown = true;
             Application.logMessageReceivedThreaded -= HandleUnityLog;
+            SceneManager.sceneLoaded -= HandleSceneLoaded;
             writer?.Dispose();
             writer = null;
         }
