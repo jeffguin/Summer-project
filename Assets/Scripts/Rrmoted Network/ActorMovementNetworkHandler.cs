@@ -45,10 +45,16 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     [Header("Isolation Test")]
     [Tooltip("On a remote Fusion instance, keeps the Fusion payload callback " +
              "and receive counters, then discards the payload before persistent " +
-             "queueing or Movement SDK deserialization. No visual avatar is " +
-             "instantiated. This setting is ignored by the input-authority actor.")]
+             "queueing or Movement SDK deserialization. This setting is ignored " +
+             "by the input-authority actor.")]
     [SerializeField]
     private bool _receiveAndDiscardRemotePayloads;
+
+    [Tooltip("When receive-and-discard is enabled, also instantiate the remote " +
+             "avatar and initialize its NetworkCharacterRetargeter before " +
+             "discarding payloads. The avatar remains in its initial pose.")]
+    [SerializeField]
+    private bool _initializeRemoteAvatarBeforeDiscarding;
 
     [Header("Network Load")]
     [Tooltip("Hard upper limit for movement packets per second. The local pose " +
@@ -160,10 +166,14 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _networkCharacterRetargeter != null &&
         _elapsedSendTime >= EffectiveSendInterval;
 
-    private bool IsRemoteFusionCallbackOnlyMode =>
+    private bool IsRemoteReceiveDiscardMode =>
         _receiveAndDiscardRemotePayloads &&
         _characterBehaviour != null &&
         !_characterBehaviour.HasInputAuthority;
+
+    private bool IsRemoteAvatarReadyDiscardMode =>
+        IsRemoteReceiveDiscardMode &&
+        _initializeRemoteAvatarBeforeDiscarding;
 
     private void Awake()
     {
@@ -213,7 +223,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         if (!_setupComplete ||
             _characterBehaviour == null ||
             _characterBehaviour.HasInputAuthority ||
-            IsRemoteFusionCallbackOnlyMode)
+            IsRemoteReceiveDiscardMode)
         {
             return;
         }
@@ -281,7 +291,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
         int characterId = _characterBehaviour.CharacterId;
 
-        if (IsRemoteFusionCallbackOnlyMode)
+        if (IsRemoteReceiveDiscardMode &&
+            !_initializeRemoteAvatarBeforeDiscarding)
         {
             if (!_setupComplete ||
                 _setupCharacterId != characterId ||
@@ -487,7 +498,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        if (IsRemoteFusionCallbackOnlyMode)
+        if (IsRemoteReceiveDiscardMode)
         {
             _dataReadCount++;
             _lastPacketArrivalRealtime = Time.realtimeSinceStartup;
@@ -496,11 +507,23 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
             if (!_loggedCallbackOnlyPacket)
             {
+                string mode = IsRemoteAvatarReadyDiscardMode
+                    ? "AVATAR_READY_RECEIVE_DISCARD"
+                    : "FUSION_CALLBACK_ONLY";
+                bool avatarInstantiated =
+                    _character != null && _character != gameObject;
+                bool retargeterInitialized =
+                    _networkCharacterRetargeter != null &&
+                    _networkCharacterRetargeter.RetargetingHandle !=
+                    INVALID_HANDLE;
+
                 Debug.Log(
-                    "ActorMovementNetworkHandler: FUSION_CALLBACK_ONLY " +
+                    $"ActorMovementNetworkHandler: {mode} " +
                     $"received {data.Length} bytes and discarded the payload. " +
                     "PersistentQueue=False, MovementDeserialize=False, " +
-                    "AvatarInstantiated=False.",
+                    "AckSent=False, PoseApplied=False, " +
+                    $"AvatarInstantiated={avatarInstantiated}, " +
+                    $"RetargeterInitialized={retargeterInitialized}.",
                     this
                 );
 
@@ -670,7 +693,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _loggedSetupFailure = false;
         _loggedReceiveBeforeReady = false;
 
-        if (_characterBehaviour.HasInputAuthority)
+        if (_characterBehaviour.HasInputAuthority ||
+            IsRemoteAvatarReadyDiscardMode)
         {
             _networkCharacterRetargeter.ToggleObjects(true);
         }
@@ -679,13 +703,27 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             ToggleCharacterWhenReady();
         }
 
+        string setupMode = IsRemoteAvatarReadyDiscardMode
+            ? "AvatarReadyReceiveDiscard"
+            : "Normal";
+
+        if (IsRemoteAvatarReadyDiscardMode)
+        {
+            gameObject.name = "RemoteCharacterAvatarReadyReceiveDiscard";
+        }
+
         Debug.Log(
             "ActorMovementNetworkHandler: Setup completed. " +
+            $"Mode={setupMode}, " +
             $"CharacterId={_setupCharacterId}, " +
             $"Owner={_networkCharacterRetargeter.Owner}, " +
             $"Joints={_bodyPose.Length}, " +
             $"FaceShapes={_configuredFaceShapeCount}, " +
             $"ApplyData={_applyData}, " +
+            $"PersistentQueue={!IsRemoteReceiveDiscardMode}, " +
+            $"MovementDeserialize={!IsRemoteReceiveDiscardMode}, " +
+            $"AckEnabled={!IsRemoteReceiveDiscardMode}, " +
+            $"PoseApplied={!IsRemoteReceiveDiscardMode && _applyData}, " +
             $"UseInterpolation={_networkCharacterRetargeter.UseInterpolation}, " +
             $"StaleTimeout={_stalePacketTimeoutSeconds:F2}s, " +
             $"ValidatePose={_validateReceivedPose}.",
@@ -1662,7 +1700,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 $"({_receivedPacketsInWindow} packets, max " +
                 $"{_largestReceivedPacketInWindow} B), " +
                 $"queue {_receiveCount}/{_receiveBufferSize}, " +
-                $"callback-only discarded " +
+                $"receive-discarded " +
                 $"{_callbackOnlyDiscardedPacketsInWindow}, " +
                 $"dropped {_droppedPacketsInWindow}.",
                 this
