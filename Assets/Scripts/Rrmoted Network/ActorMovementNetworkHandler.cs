@@ -56,6 +56,12 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     [SerializeField]
     private bool _initializeRemoteAvatarBeforeDiscarding;
 
+    [Tooltip("When the remote avatar discard mode is enabled, first copy each " +
+             "payload into the preallocated persistent receive ring, then " +
+             "dequeue and discard one packet during Update.")]
+    [SerializeField]
+    private bool _queueRemotePayloadsBeforeDiscarding;
+
     [Header("Network Load")]
     [Tooltip("Hard upper limit for movement packets per second. The local pose " +
              "is still sampled every rendered frame; only network transmission is limited.")]
@@ -121,7 +127,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private int _sentBytesInWindow;
     private int _sentPacketsInWindow;
     private int _droppedPacketsInWindow;
-    private int _callbackOnlyDiscardedPacketsInWindow;
+    private int _receiveDiscardedPacketsInWindow;
     private int _largestReceivedPacketInWindow;
     private int _largestSentPacketInWindow;
 
@@ -139,6 +145,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private bool _loggedApplyFailure;
     private bool _loggedCallbackOnlySetup;
     private bool _loggedCallbackOnlyPacket;
+    private bool _loggedQueueDiscardEnqueue;
+    private bool _loggedQueueDiscardDequeue;
 
     private float _lastPacketArrivalRealtime;
     private double _latestSnapshotTimestamp;
@@ -174,6 +182,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private bool IsRemoteAvatarReadyDiscardMode =>
         IsRemoteReceiveDiscardMode &&
         _initializeRemoteAvatarBeforeDiscarding;
+
+    private bool IsRemoteQueueDiscardMode =>
+        IsRemoteAvatarReadyDiscardMode &&
+        _queueRemotePayloadsBeforeDiscarding;
 
     private void Awake()
     {
@@ -213,6 +225,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void Update()
     {
+        if (IsRemoteQueueDiscardMode)
+        {
+            DiscardNextQueuedPacketWithoutDeserializing();
+        }
+
         UpdateNetworkStatistics();
 
         if (_setupRequested && !_setupComplete)
@@ -498,12 +515,12 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        if (IsRemoteReceiveDiscardMode)
+        if (IsRemoteReceiveDiscardMode && !IsRemoteQueueDiscardMode)
         {
             _dataReadCount++;
             _lastPacketArrivalRealtime = Time.realtimeSinceStartup;
             _hasReceivedPacket = true;
-            _callbackOnlyDiscardedPacketsInWindow++;
+            _receiveDiscardedPacketsInWindow++;
 
             if (!_loggedCallbackOnlyPacket)
             {
@@ -562,6 +579,27 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _dataReadCount++;
         _lastPacketArrivalRealtime = Time.realtimeSinceStartup;
         _hasReceivedPacket = true;
+
+        if (IsRemoteQueueDiscardMode)
+        {
+            if (!_loggedQueueDiscardEnqueue)
+            {
+                Debug.Log(
+                    "ActorMovementNetworkHandler: " +
+                    "AVATAR_READY_QUEUE_DISCARD enqueued " +
+                    $"{data.Length} bytes into persistent slot " +
+                    $"{(_receiveWriteIndex - 1 + _receiveSlots.Length) % _receiveSlots.Length}. " +
+                    $"QueueDepth={_receiveCount}/{_receiveSlots.Length}, " +
+                    "MovementDeserialize=False, AckSent=False, " +
+                    "PoseApplied=False.",
+                    this
+                );
+
+                _loggedQueueDiscardEnqueue = true;
+            }
+
+            return;
+        }
 
         if (!_setupComplete)
         {
@@ -703,13 +741,17 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             ToggleCharacterWhenReady();
         }
 
-        string setupMode = IsRemoteAvatarReadyDiscardMode
-            ? "AvatarReadyReceiveDiscard"
-            : "Normal";
+        string setupMode = IsRemoteQueueDiscardMode
+            ? "AvatarReadyQueueDiscard"
+            : IsRemoteAvatarReadyDiscardMode
+                ? "AvatarReadyReceiveDiscard"
+                : "Normal";
 
         if (IsRemoteAvatarReadyDiscardMode)
         {
-            gameObject.name = "RemoteCharacterAvatarReadyReceiveDiscard";
+            gameObject.name = IsRemoteQueueDiscardMode
+                ? "RemoteCharacterAvatarReadyQueueDiscard"
+                : "RemoteCharacterAvatarReadyReceiveDiscard";
         }
 
         Debug.Log(
@@ -720,7 +762,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             $"Joints={_bodyPose.Length}, " +
             $"FaceShapes={_configuredFaceShapeCount}, " +
             $"ApplyData={_applyData}, " +
-            $"PersistentQueue={!IsRemoteReceiveDiscardMode}, " +
+            $"PersistentQueue=" +
+            $"{!IsRemoteReceiveDiscardMode || IsRemoteQueueDiscardMode}, " +
             $"MovementDeserialize={!IsRemoteReceiveDiscardMode}, " +
             $"AckEnabled={!IsRemoteReceiveDiscardMode}, " +
             $"PoseApplied={!IsRemoteReceiveDiscardMode && _applyData}, " +
@@ -1024,6 +1067,46 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         }
 
         return indices;
+    }
+
+    private void DiscardNextQueuedPacketWithoutDeserializing()
+    {
+        if (_receiveCount <= 0 ||
+            _receiveSlots == null ||
+            _receiveLengths == null)
+        {
+            return;
+        }
+
+        int slotIndex = _receiveReadIndex;
+        int dataLength = _receiveLengths[slotIndex];
+
+        _receiveLengths[slotIndex] = 0;
+        _receiveReadIndex =
+            (_receiveReadIndex + 1) % _receiveSlots.Length;
+        _receiveCount--;
+
+        if (dataLength <= 0)
+        {
+            return;
+        }
+
+        _receiveDiscardedPacketsInWindow++;
+
+        if (!_loggedQueueDiscardDequeue)
+        {
+            Debug.Log(
+                "ActorMovementNetworkHandler: " +
+                "AVATAR_READY_QUEUE_DISCARD dequeued and discarded " +
+                $"{dataLength} bytes from persistent slot {slotIndex}. " +
+                $"QueueDepthAfter={_receiveCount}/{_receiveSlots.Length}, " +
+                "MovementDeserialize=False, AckSent=False, " +
+                "PoseApplied=False.",
+                this
+            );
+
+            _loggedQueueDiscardDequeue = true;
+        }
     }
 
     private void TryReceiveData(float networkTime, float renderTime)
@@ -1701,7 +1784,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 $"{_largestReceivedPacketInWindow} B), " +
                 $"queue {_receiveCount}/{_receiveBufferSize}, " +
                 $"receive-discarded " +
-                $"{_callbackOnlyDiscardedPacketsInWindow}, " +
+                $"{_receiveDiscardedPacketsInWindow}, " +
                 $"dropped {_droppedPacketsInWindow}.",
                 this
             );
@@ -1713,7 +1796,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _sentBytesInWindow = 0;
         _sentPacketsInWindow = 0;
         _droppedPacketsInWindow = 0;
-        _callbackOnlyDiscardedPacketsInWindow = 0;
+        _receiveDiscardedPacketsInWindow = 0;
         _largestReceivedPacketInWindow = 0;
         _largestSentPacketInWindow = 0;
     }
@@ -1731,6 +1814,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _loggedApplyFailure = false;
         _loggedCallbackOnlySetup = false;
         _loggedCallbackOnlyPacket = false;
+        _loggedQueueDiscardEnqueue = false;
+        _loggedQueueDiscardDequeue = false;
         _hasReceivedPacket = false;
         _packetStreamIsStale = false;
         _lastPacketArrivalRealtime = 0f;

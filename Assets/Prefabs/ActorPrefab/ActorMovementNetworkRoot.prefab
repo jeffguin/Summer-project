@@ -108,6 +108,7 @@ MonoBehaviour:
   _spawnDelay: 0.5
   _receiveAndDiscardRemotePayloads: 1
   _initializeRemoteAvatarBeforeDiscarding: 1
+  _queueRemotePayloadsBeforeDiscarding: 1
   _maximumSendRateHz: 12
   _receiveBufferSize: 3
   _disableRemoteInterpolation: 1
