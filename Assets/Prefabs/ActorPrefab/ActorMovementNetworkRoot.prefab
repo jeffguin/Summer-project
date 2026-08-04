@@ -108,7 +108,11 @@ MonoBehaviour:
   _spawnDelay: 0.5
   _maximumSendRateHz: 12
   _receiveBufferSize: 3
-  _logNetworkStatistics: 0
+  _disableRemoteInterpolation: 1
+  _enableStalePacketProtection: 1
+  _stalePacketTimeoutSeconds: 0.5
+  _validateReceivedPose: 1
+  _logNetworkStatistics: 1
   _networkStatisticsInterval: 5
 --- !u!114 &-5778272132864700022
 MonoBehaviour:

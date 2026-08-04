@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Fusion;
@@ -11,16 +12,35 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
 {
     private const float HeartbeatIntervalSeconds = 5f;
     private const int MaximumCapturedTextLength = 2048;
+    private const double DuplicateWarningWindowSeconds = 5d;
+    private const double CriticalStageTimeoutSeconds = 0.5d;
+    private const int CriticalStagePollMilliseconds = 100;
 
     private static RuntimeDiagnosticsFileLogger instance;
 
     private readonly object writerLock = new object();
+    private readonly object warningRateLimitLock = new object();
+    private readonly object criticalStageLock = new object();
+    private readonly Dictionary<string, WarningRateState> warningRateStates =
+        new Dictionary<string, WarningRateState>();
     private StreamWriter writer;
+    private System.Threading.Timer criticalStageTimer;
     private string logPath;
     private float heartbeatElapsed;
     private float frameElapsed;
     private int framesSinceHeartbeat;
     private bool shuttingDown;
+
+    private string criticalStage;
+    private long criticalStageStartedAt;
+    private int criticalStageToken;
+    private int reportedCriticalStageToken;
+
+    private sealed class WarningRateState
+    {
+        public DateTime LastWrittenUtc;
+        public int SuppressedCount;
+    }
 
     public static string LogPath => instance != null
         ? instance.logPath
@@ -76,6 +96,13 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
             };
 
             Application.logMessageReceivedThreaded += HandleUnityLog;
+            criticalStageTimer = new System.Threading.Timer(
+                CheckCriticalStage,
+                null,
+                CriticalStagePollMilliseconds,
+                CriticalStagePollMilliseconds
+            );
+
             WriteLine(
                 $"START utc={DateTime.UtcNow:O} " +
                 $"platform={Application.platform} " +
@@ -164,13 +191,148 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
         if (type == UnityEngine.LogType.Log && !isLifecycleLog)
             return;
 
+        int suppressedDuplicates = 0;
+
+        if (type == UnityEngine.LogType.Warning &&
+            ShouldSuppressDuplicateWarning(
+                condition,
+                out suppressedDuplicates))
+        {
+            return;
+        }
+
         string safeCondition = LimitAndFlatten(condition);
         string safeStackTrace = LimitAndFlatten(stackTrace);
 
         WriteLine(
             $"UNITY_{type.ToString().ToUpperInvariant()} " +
             $"utc={DateTime.UtcNow:O} message={safeCondition} " +
+            $"suppressedDuplicates={suppressedDuplicates} " +
             $"stack={safeStackTrace}"
+        );
+    }
+
+    public static int BeginCriticalStage(string stage)
+    {
+        RuntimeDiagnosticsFileLogger logger = instance;
+
+        if (logger == null || string.IsNullOrEmpty(stage))
+            return 0;
+
+        return logger.BeginCriticalStageInternal(stage);
+    }
+
+    public static void EndCriticalStage(int token)
+    {
+        RuntimeDiagnosticsFileLogger logger = instance;
+
+        if (logger == null || token == 0)
+            return;
+
+        logger.EndCriticalStageInternal(token);
+    }
+
+    private bool ShouldSuppressDuplicateWarning(
+        string condition,
+        out int suppressedDuplicates)
+    {
+        suppressedDuplicates = 0;
+
+        if (string.IsNullOrEmpty(condition))
+            return false;
+
+        DateTime now = DateTime.UtcNow;
+
+        lock (warningRateLimitLock)
+        {
+            if (!warningRateStates.TryGetValue(
+                    condition,
+                    out WarningRateState state))
+            {
+                warningRateStates[condition] = new WarningRateState
+                {
+                    LastWrittenUtc = now
+                };
+                return false;
+            }
+
+            if ((now - state.LastWrittenUtc).TotalSeconds <
+                DuplicateWarningWindowSeconds)
+            {
+                state.SuppressedCount++;
+                return true;
+            }
+
+            suppressedDuplicates = state.SuppressedCount;
+            state.SuppressedCount = 0;
+            state.LastWrittenUtc = now;
+            return false;
+        }
+    }
+
+    private int BeginCriticalStageInternal(string stage)
+    {
+        lock (criticalStageLock)
+        {
+            criticalStageToken++;
+
+            if (criticalStageToken == 0)
+                criticalStageToken++;
+
+            criticalStage = stage;
+            criticalStageStartedAt =
+                System.Diagnostics.Stopwatch.GetTimestamp();
+            reportedCriticalStageToken = 0;
+            return criticalStageToken;
+        }
+    }
+
+    private void EndCriticalStageInternal(int token)
+    {
+        lock (criticalStageLock)
+        {
+            if (token != criticalStageToken)
+                return;
+
+            criticalStage = null;
+            criticalStageStartedAt = 0;
+        }
+    }
+
+    private void CheckCriticalStage(object state)
+    {
+        string stalledStage = null;
+        double elapsedMilliseconds = 0d;
+
+        lock (criticalStageLock)
+        {
+            if (criticalStage == null ||
+                criticalStageStartedAt == 0 ||
+                reportedCriticalStageToken == criticalStageToken)
+            {
+                return;
+            }
+
+            long elapsedTicks =
+                System.Diagnostics.Stopwatch.GetTimestamp() -
+                criticalStageStartedAt;
+
+            double elapsedSeconds =
+                elapsedTicks /
+                (double)System.Diagnostics.Stopwatch.Frequency;
+
+            if (elapsedSeconds < CriticalStageTimeoutSeconds)
+                return;
+
+            reportedCriticalStageToken = criticalStageToken;
+            stalledStage = criticalStage;
+            elapsedMilliseconds = elapsedSeconds * 1000d;
+        }
+
+        WriteLine(
+            $"MAIN_THREAD_STALL utc={DateTime.UtcNow:O} " +
+            $"stage={stalledStage} " +
+            $"durationMs={elapsedMilliseconds:F0}"
         );
     }
 
@@ -214,6 +376,9 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
 
     private void ShutdownWriter(string reason)
     {
+        criticalStageTimer?.Dispose();
+        criticalStageTimer = null;
+
         lock (writerLock)
         {
             if (shuttingDown)

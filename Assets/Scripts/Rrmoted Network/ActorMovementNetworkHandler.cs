@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Meta.XR.Movement.Networking;
+using Meta.XR.Movement.Networking.Local;
 using Meta.XR.Movement.Retargeting;
 #if FUSION2
 using Meta.XR.Movement.Networking.Fusion;
@@ -54,6 +55,24 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     [Min(2)]
     private int _receiveBufferSize = 3;
 
+    [Header("Stream Safety")]
+    [Tooltip("Forces remote avatars to apply only newly deserialized poses. " +
+             "This bypasses the Movement SDK interpolation buffer while diagnosing stalls.")]
+    [SerializeField]
+    private bool _disableRemoteInterpolation = true;
+
+    [Tooltip("Stops applying pose data after the movement stream becomes stale.")]
+    [SerializeField]
+    private bool _enableStalePacketProtection = true;
+
+    [SerializeField]
+    [Min(0.1f)]
+    private float _stalePacketTimeoutSeconds = 0.5f;
+
+    [Tooltip("Rejects a complete pose when it contains non-finite or unsafe transform values.")]
+    [SerializeField]
+    private bool _validateReceivedPose = true;
+
     [Header("Diagnostics")]
     [Tooltip("Logs aggregate movement bandwidth and queue pressure at a low rate.")]
     [SerializeField]
@@ -101,6 +120,18 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private bool _loggedReceiveBeforeReady;
     private bool _loggedDeserializeFailure;
     private bool _loggedOversizedPacket;
+    private bool _loggedInvalidPose;
+    private bool _loggedApplyFailure;
+
+    private float _lastPacketArrivalRealtime;
+    private double _latestSnapshotTimestamp;
+    private bool _hasReceivedPacket;
+    private bool _packetStreamIsStale;
+
+    private bool _hasObservedLocalTrackingState;
+    private bool _lastLocalTrackingState;
+    private bool _forceFullSnapshot = true;
+    private bool _lastSerializedPacketWasFullSnapshot;
 
     private float EffectiveSendInterval => Mathf.Max(
         _networkCharacterRetargeter != null
@@ -122,6 +153,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
         _receiveBufferSize = Mathf.Max(2, _receiveBufferSize);
+        _stalePacketTimeoutSeconds = Mathf.Max(
+            0.1f,
+            _stalePacketTimeoutSeconds
+        );
         _networkStatisticsInterval = Mathf.Max(
             1f,
             _networkStatisticsInterval
@@ -182,6 +217,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
+        UpdateLocalTrackingState();
         TrySendData(_characterBehaviour.NetworkTime);
     }
 
@@ -195,6 +231,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
         _receiveBufferSize = Mathf.Max(2, _receiveBufferSize);
+        _stalePacketTimeoutSeconds = Mathf.Max(
+            0.1f,
+            _stalePacketTimeoutSeconds
+        );
         _networkStatisticsInterval = Mathf.Max(
             1f,
             _networkStatisticsInterval
@@ -246,9 +286,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         if (!_setupComplete ||
             _networkCharacterRetargeter == null ||
-            !_networkCharacterRetargeter.IsValid ||
-            !_networkCharacterRetargeter.SkeletonRetargeter.IsInitialized ||
-            !_networkCharacterRetargeter.SkeletonRetargeter.AppliedPose)
+            !IsLocalTrackingReady())
         {
             return;
         }
@@ -378,6 +416,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 _serializedData
             );
 
+            if (_lastSerializedPacketWasFullSnapshot)
+            {
+                _forceFullSnapshot = false;
+            }
+
             RecordSentPacket(_serializedData.Length);
             BytesSent?.Invoke(_serializedData.Length);
         }
@@ -443,6 +486,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             (_receiveWriteIndex + 1) % _receiveSlots.Length;
         _receiveCount++;
         _dataReadCount++;
+        _lastPacketArrivalRealtime = Time.realtimeSinceStartup;
+        _hasReceivedPacket = true;
 
         if (!_setupComplete)
         {
@@ -588,7 +633,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             $"CharacterId={_setupCharacterId}, " +
             $"Owner={_networkCharacterRetargeter.Owner}, " +
             $"Joints={_bodyPose.Length}, " +
-            $"FaceShapes={_configuredFaceShapeCount}.",
+            $"FaceShapes={_configuredFaceShapeCount}, " +
+            $"UseInterpolation={_networkCharacterRetargeter.UseInterpolation}, " +
+            $"StaleTimeout={_stalePacketTimeoutSeconds:F2}s, " +
+            $"ValidatePose={_validateReceivedPose}.",
             this
         );
 
@@ -603,6 +651,12 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 : NetworkCharacterRetargeter.Ownership.Client;
 
         _networkCharacterRetargeter.Owner = expectedOwnership;
+
+        if (!_characterBehaviour.HasInputAuthority &&
+            _disableRemoteInterpolation)
+        {
+            _networkCharacterRetargeter.UseInterpolation = false;
+        }
 
         gameObject.name = expectedOwnership ==
                           NetworkCharacterRetargeter.Ownership.Host
@@ -631,14 +685,32 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             faceSource.enabled = isLocalTrackingSource;
         }
 
-        if (isLocalTrackingSource)
+        Meta.XR.Movement.Networking.NetworkCharacterHandler[]
+            sampleHandlers =
+                _character.GetComponentsInChildren<
+                    Meta.XR.Movement.Networking.NetworkCharacterHandler
+                >(true);
+
+        foreach (Meta.XR.Movement.Networking.NetworkCharacterHandler
+                 sampleHandler in sampleHandlers)
         {
-            return;
+            sampleHandler.enabled = false;
         }
 
-        // The legacy OVR retargeter reads local device tracking and competes
-        // with network pose application. Remote avatars are driven solely by
-        // the deserialized 105-joint/31-shape stream.
+        NetworkCharacterBehaviourLocal[] localSampleBehaviours =
+            _character.GetComponentsInChildren<
+                NetworkCharacterBehaviourLocal
+            >(true);
+
+        foreach (NetworkCharacterBehaviourLocal localSampleBehaviour in
+                 localSampleBehaviours)
+        {
+            localSampleBehaviour.enabled = false;
+        }
+
+        // The Movement NetworkCharacterRetargeter is the only body driver on
+        // both peers. Leaving the legacy OVR retargeter enabled on the actor
+        // makes two components write the same 105 transforms.
         OVRUnityHumanoidSkeletonRetargeter[] legacyRetargeters =
             _character.GetComponentsInChildren<
                 OVRUnityHumanoidSkeletonRetargeter
@@ -648,6 +720,14 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                  legacyRetargeters)
         {
             legacyRetargeter.enabled = false;
+        }
+
+        Animator[] animators =
+            _character.GetComponentsInChildren<Animator>(true);
+
+        foreach (Animator animator in animators)
+        {
+            animator.applyRootMotion = false;
         }
     }
 
@@ -834,9 +914,16 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
+        bool receivedNewPose = false;
+
         if (_receiveCount > 0)
         {
-            DeserializeNextPacket();
+            receivedNewPose = DeserializeNextPacket();
+        }
+
+        if (IsPacketStreamStale())
+        {
+            return;
         }
 
         if (!_applyData || !_dataIsValid)
@@ -844,23 +931,31 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
+        // Without interpolation, _bodyPose/_facePose already contain the
+        // decoded snapshot. Reapplying that same snapshot on every rendered
+        // frame creates unnecessary Transform/SkinnedMesh work and continues
+        // forever after the sender stops. Apply direct poses exactly once.
+        if (!_networkCharacterRetargeter.UseInterpolation &&
+            !receivedNewPose)
+        {
+            return;
+        }
+
         if (ReadBodyData(renderTime))
         {
-            _networkCharacterRetargeter.ApplyBodyPose(
-                _bodyPose,
-                Meta.XR.Movement.Retargeting.JointType.NoWorldSpace
-            );
-
-            _networkCharacterRetargeter.SetDebugPose(_bodyPose);
+            if (!ApplyBodyPoseSafely())
+            {
+                return;
+            }
         }
 
         if (_configuredFaceShapeCount > 0 && ReadFaceData(renderTime))
         {
-            _networkCharacterRetargeter.ApplyFacePose(_facePose);
+            ApplyFacePoseSafely();
         }
     }
 
-    private void DeserializeNextPacket()
+    private bool DeserializeNextPacket()
     {
         int slotIndex = _receiveReadIndex;
         int dataLength = _receiveLengths[slotIndex];
@@ -872,7 +967,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
         if (dataLength <= 0)
         {
-            return;
+            return false;
         }
 
         // GetSubArray creates a non-owning view. The persistent owner remains
@@ -880,13 +975,17 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         NativeArray<byte> data =
             _receiveSlots[slotIndex].GetSubArray(0, dataLength);
 
+        int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
+            "MOVEMENT_DESERIALIZE"
+        );
+
         try
         {
             bool success = DeserializeSkeletonAndFace(
                 _networkCharacterRetargeter.RetargetingHandle,
                 data,
                 SERIALIZATION_VERSION_CURRENT,
-                out _,
+                out double snapshotTimestamp,
                 out _,
                 out int ack,
                 ref _bodyPose,
@@ -896,7 +995,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             if (!success)
             {
                 _dataIsValid = false;
-                return;
+                return false;
             }
 
             if (_configuredFaceShapeCount > 0)
@@ -906,9 +1005,30 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 );
             }
 
+            if (!ValidateReceivedPose(snapshotTimestamp))
+            {
+                _dataIsValid = false;
+                return false;
+            }
+
             _dataIsValid = true;
+            _latestSnapshotTimestamp = snapshotTimestamp;
             _loggedDeserializeFailure = false;
+            _loggedInvalidPose = false;
+            _loggedApplyFailure = false;
+
+            if (_packetStreamIsStale)
+            {
+                _packetStreamIsStale = false;
+                Debug.Log(
+                    "ActorMovementNetworkHandler: PACKET_STALE_EXIT " +
+                    $"snapshotTime={_latestSnapshotTimestamp:F3}.",
+                    this
+                );
+            }
+
             SendAck(ack);
+            return true;
         }
         catch (Exception exception)
         {
@@ -924,7 +1044,226 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
                 _loggedDeserializeFailure = true;
             }
+
+            return false;
         }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
+        }
+    }
+
+    private bool IsPacketStreamStale()
+    {
+        if (!_enableStalePacketProtection || !_hasReceivedPacket)
+        {
+            return false;
+        }
+
+        float packetAge =
+            Time.realtimeSinceStartup - _lastPacketArrivalRealtime;
+
+        if (packetAge <= _stalePacketTimeoutSeconds)
+        {
+            return false;
+        }
+
+        _dataIsValid = false;
+
+        if (!_packetStreamIsStale)
+        {
+            _packetStreamIsStale = true;
+            Debug.LogWarning(
+                "ActorMovementNetworkHandler: PACKET_STALE_ENTER " +
+                $"age={packetAge:F3}s timeout=" +
+                $"{_stalePacketTimeoutSeconds:F3}s. Pose application " +
+                "stopped and a full snapshot was requested.",
+                this
+            );
+
+            // -1 makes the sender abandon its delta baseline and produce a
+            // complete 105-joint/31-shape recovery snapshot.
+            SendAck(-1);
+        }
+
+        return true;
+    }
+
+    private bool ValidateReceivedPose(double snapshotTimestamp)
+    {
+        if (!_validateReceivedPose)
+        {
+            return true;
+        }
+
+        if (double.IsNaN(snapshotTimestamp) ||
+            double.IsInfinity(snapshotTimestamp))
+        {
+            return LogInvalidPose("snapshot timestamp is not finite");
+        }
+
+        for (int i = 0; i < _bodyPose.Length; i++)
+        {
+            NativeTransform pose = _bodyPose[i];
+
+            if (!IsFinite(pose.Position) ||
+                !IsFinite(pose.Orientation) ||
+                !IsFinite(pose.Scale))
+            {
+                return LogInvalidPose(
+                    $"joint {i} contains NaN or Infinity"
+                );
+            }
+
+            float orientationMagnitudeSquared =
+                pose.Orientation.x * pose.Orientation.x +
+                pose.Orientation.y * pose.Orientation.y +
+                pose.Orientation.z * pose.Orientation.z +
+                pose.Orientation.w * pose.Orientation.w;
+
+            if (orientationMagnitudeSquared < 0.000001f ||
+                orientationMagnitudeSquared > 100f)
+            {
+                return LogInvalidPose(
+                    $"joint {i} has an unsafe quaternion magnitude " +
+                    $"({orientationMagnitudeSquared:F6})"
+                );
+            }
+
+            if (MaxAbsoluteComponent(pose.Position) > 1000f ||
+                MaxAbsoluteComponent(pose.Scale) > 1000f)
+            {
+                return LogInvalidPose(
+                    $"joint {i} exceeds the transform safety range"
+                );
+            }
+        }
+
+        for (int i = 0; i < _facePose.Length; i++)
+        {
+            float value = _facePose[i];
+
+            if (float.IsNaN(value) ||
+                float.IsInfinity(value) ||
+                Mathf.Abs(value) > 10000f)
+            {
+                return LogInvalidPose(
+                    $"face shape {i} contains an unsafe value ({value})"
+                );
+            }
+        }
+
+        return true;
+    }
+
+    private bool LogInvalidPose(string reason)
+    {
+        if (!_loggedInvalidPose)
+        {
+            Debug.LogError(
+                "ActorMovementNetworkHandler: INVALID_POSE packet rejected. " +
+                reason + ".",
+                this
+            );
+            _loggedInvalidPose = true;
+        }
+
+        return false;
+    }
+
+    private bool ApplyBodyPoseSafely()
+    {
+        int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
+            "MOVEMENT_APPLY_BODY"
+        );
+
+        try
+        {
+            _networkCharacterRetargeter.ApplyBodyPose(
+                _bodyPose,
+                Meta.XR.Movement.Retargeting.JointType.NoWorldSpace
+            );
+
+            _networkCharacterRetargeter.SetDebugPose(_bodyPose);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            LogApplyFailure("body", exception);
+            return false;
+        }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
+        }
+    }
+
+    private bool ApplyFacePoseSafely()
+    {
+        int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
+            "MOVEMENT_APPLY_FACE"
+        );
+
+        try
+        {
+            _networkCharacterRetargeter.ApplyFacePose(_facePose);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            LogApplyFailure("face", exception);
+            return false;
+        }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
+        }
+    }
+
+    private void LogApplyFailure(string poseType, Exception exception)
+    {
+        _dataIsValid = false;
+
+        if (_loggedApplyFailure)
+        {
+            return;
+        }
+
+        Debug.LogError(
+            "ActorMovementNetworkHandler: APPLY_POSE_FAILED " +
+            $"type={poseType}. {exception}",
+            this
+        );
+        _loggedApplyFailure = true;
+    }
+
+    private static bool IsFinite(Vector3 value)
+    {
+        return IsFinite(value.x) &&
+               IsFinite(value.y) &&
+               IsFinite(value.z);
+    }
+
+    private static bool IsFinite(Quaternion value)
+    {
+        return IsFinite(value.x) &&
+               IsFinite(value.y) &&
+               IsFinite(value.z) &&
+               IsFinite(value.w);
+    }
+
+    private static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private static float MaxAbsoluteComponent(Vector3 value)
+    {
+        return Mathf.Max(
+            Mathf.Abs(value.x),
+            Mathf.Abs(value.y),
+            Mathf.Abs(value.z)
+        );
     }
 
     private bool ReadBodyData(float renderTime)
@@ -939,12 +1278,23 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return true;
         }
 
-        return GetInterpolatedSkeleton(
-            _networkCharacterRetargeter.RetargetingHandle,
-            SkeletonType.TargetSkeleton,
-            ref _bodyPose,
-            renderTime
+        int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
+            "MOVEMENT_INTERPOLATE_BODY"
         );
+
+        try
+        {
+            return GetInterpolatedSkeleton(
+                _networkCharacterRetargeter.RetargetingHandle,
+                SkeletonType.TargetSkeleton,
+                ref _bodyPose,
+                renderTime
+            );
+        }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
+        }
     }
 
     private bool ReadFaceData(float renderTime)
@@ -959,17 +1309,79 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return true;
         }
 
-        if (!GetInterpolatedFace(
+        int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
+            "MOVEMENT_INTERPOLATE_FACE"
+        );
+
+        bool interpolationSucceeded;
+
+        try
+        {
+            interpolationSucceeded = GetInterpolatedFace(
                 _networkCharacterRetargeter.RetargetingHandle,
                 SkeletonType.TargetSkeleton,
                 ref _facePose,
-                renderTime))
+                renderTime
+            );
+        }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
+        }
+
+        if (!interpolationSucceeded)
         {
             return false;
         }
 
         _networkCharacterRetargeter.DeNormalizeFaceValues(ref _facePose);
         return true;
+    }
+
+    private bool IsLocalTrackingReady()
+    {
+        return _networkCharacterRetargeter != null &&
+               _networkCharacterRetargeter.IsValid &&
+               _networkCharacterRetargeter.SkeletonRetargeter != null &&
+               _networkCharacterRetargeter.SkeletonRetargeter.IsInitialized &&
+               _networkCharacterRetargeter.SkeletonRetargeter.AppliedPose;
+    }
+
+    private void UpdateLocalTrackingState()
+    {
+        bool trackingIsValid = IsLocalTrackingReady();
+
+        if (_hasObservedLocalTrackingState &&
+            trackingIsValid == _lastLocalTrackingState)
+        {
+            return;
+        }
+
+        bool hadObservedTrackingState = _hasObservedLocalTrackingState;
+
+        _hasObservedLocalTrackingState = true;
+        _lastLocalTrackingState = trackingIsValid;
+
+        if (trackingIsValid)
+        {
+            _forceFullSnapshot = true;
+            Debug.Log(
+                "ActorMovementNetworkHandler: " +
+                (hadObservedTrackingState
+                    ? "TRACKING_RECOVERED"
+                    : "TRACKING_VALID") +
+                ". A complete recovery snapshot will be sent.",
+                this
+            );
+        }
+        else
+        {
+            Debug.LogWarning(
+                "ActorMovementNetworkHandler: TRACKING_LOST. Movement " +
+                "snapshot transmission is paused until tracking recovers.",
+                this
+            );
+        }
     }
 
     private void TrySendData(float networkTime)
@@ -1005,6 +1417,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private void SerializeData(int lastAck, float networkTime)
     {
         DisposeSerializedData();
+        _lastSerializedPacketWasFullSnapshot = false;
 
         if (!_setupComplete ||
             _networkCharacterRetargeter.RetargetingHandle == INVALID_HANDLE)
@@ -1012,7 +1425,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        if (ShouldSyncData ||
+        if (_forceFullSnapshot ||
+            ShouldSyncData ||
             !_networkCharacterRetargeter.UseDeltaCompression)
         {
             lastAck = -1;
@@ -1046,6 +1460,9 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 faceIndices,
                 ref _serializedData
             );
+
+            _lastSerializedPacketWasFullSnapshot =
+                _dataIsValid && lastAck == -1;
         }
         finally
         {
@@ -1185,6 +1602,16 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _configuredFaceShapeCount = 0;
         _networkCharacterRetargeter = null;
         _loggedOversizedPacket = false;
+        _loggedInvalidPose = false;
+        _loggedApplyFailure = false;
+        _hasReceivedPacket = false;
+        _packetStreamIsStale = false;
+        _lastPacketArrivalRealtime = 0f;
+        _latestSnapshotTimestamp = 0d;
+        _hasObservedLocalTrackingState = false;
+        _lastLocalTrackingState = false;
+        _forceFullSnapshot = true;
+        _lastSerializedPacketWasFullSnapshot = false;
 
         DisposePoseBuffers();
         ClearReceiveQueue();
