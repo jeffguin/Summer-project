@@ -64588,6 +64588,63 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1919645580}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &723763224
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 3.8970807
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.007819653
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 2.226053
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
+      propertyPath: m_Name
+      value: bottle5th
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 72eb0ebfa1e099c4db63918b67b33950, type: 3}
 --- !u!1 &726685552
 GameObject:
   m_ObjectHideFlags: 0
@@ -81434,6 +81491,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _monoscopic: 0
   _sharpenType: 0
+  _disableRecording: 0
   _enableDynamicResolution: 0
   minDynamicResolutionScale: 1
   maxDynamicResolutionScale: 1
@@ -81445,8 +81503,13 @@ MonoBehaviour:
   maxRenderScale: 1
   _headPoseRelativeOffsetRotation: {x: 0, y: 0, z: 0}
   _headPoseRelativeOffsetTranslation: {x: 0, y: 0, z: 0}
-  profilerTcpPort: 32419
-  expandMixedRealityCapturePropertySheet: 0
+  enableCoreMetricsRelease: 0
+  enableCoreMetricsDevelopment: 1
+  coreMetricVisibility:
+    visibleMemoryMetricStats: 0
+    visibleMemoryMetricGraphs: 0
+    visibleRenderMetricStats: 0
+    visibleRenderMetricGraphs: 0
   enableMixedReality: 0
   compositionMethod: 0
   extraHiddenLayers:
@@ -81500,6 +81563,10 @@ MonoBehaviour:
   SimultaneousHandsAndControllersEnabled: 0
   _readOnlyWideMotionModeHandPosesEnabled: 0
   wideMotionModeHandPosesEnabled: 0
+  _readOnlyFastMotionModeHandPosesEnabled: 0
+  fastMotionModeHandPosesEnabled: 0
+  _readOnlyWideMotionMode2HandPosesEnabled: 0
+  wideMotionMode2HandPosesEnabled: 0
   dynamicResolutionVersion: 1
 --- !u!114 &1262221401
 MonoBehaviour:
@@ -129339,7 +129406,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ee10491ef6d5d1d49a270cf6b09bdc19, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _enableMipmapping: 0
+  _mipmapMode: 0
   _dynamicResolution: 1
   _redrawResolutionThreshold: 2147483647
   rectTransform: {fileID: 4680247487423013873}
@@ -129347,13 +129414,13 @@ MonoBehaviour:
   manualRedraw: 0
   renderInterval: 1
   renderIntervalFrameOffset: 0
-  expensive: 0
+  superSample: 0
   layer: 5
   opacity: 2
   shape: 0
   curveRadius: 0.09
   overlapMask: 0
-  overlayType: 1
+  compositionMode: 1
   _overlayEnabled: 1
 --- !u!4 &815028293848613833
 Transform:
@@ -129416,6 +129483,7 @@ MonoBehaviour:
   _updateMode: 0
   _updateAfter: {fileID: 0}
   _hmdData: {fileID: 6486839504473268009}
+  _updateType: 0
   _handedness: 1
   _trackingToWorldTransformer: {fileID: 1525326581825582107}
   _metaAimHandBindingsLeft:
@@ -205161,6 +205229,7 @@ MonoBehaviour:
   _updateMode: 0
   _updateAfter: {fileID: 0}
   _hmdData: {fileID: 6486839504473268009}
+  _updateType: 0
   _handedness: 0
   _trackingToWorldTransformer: {fileID: 1525326581825582107}
   _metaAimHandBindingsLeft:
@@ -249086,3 +249155,4 @@ SceneRoots:
   - {fileID: 1704062073}
   - {fileID: 1156402946}
   - {fileID: 7892167878435119831}
+  - {fileID: 723763224}
