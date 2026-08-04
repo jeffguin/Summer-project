@@ -42,6 +42,14 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     [SerializeField]
     private float _spawnDelay = 0.5f;
 
+    [Header("Isolation Test")]
+    [Tooltip("On a remote Fusion instance, keeps the Fusion payload callback " +
+             "and receive counters, then discards the payload before persistent " +
+             "queueing or Movement SDK deserialization. No visual avatar is " +
+             "instantiated. This setting is ignored by the input-authority actor.")]
+    [SerializeField]
+    private bool _receiveAndDiscardRemotePayloads;
+
     [Header("Network Load")]
     [Tooltip("Hard upper limit for movement packets per second. The local pose " +
              "is still sampled every rendered frame; only network transmission is limited.")]
@@ -107,6 +115,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private int _sentBytesInWindow;
     private int _sentPacketsInWindow;
     private int _droppedPacketsInWindow;
+    private int _callbackOnlyDiscardedPacketsInWindow;
     private int _largestReceivedPacketInWindow;
     private int _largestSentPacketInWindow;
 
@@ -122,6 +131,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private bool _loggedOversizedPacket;
     private bool _loggedInvalidPose;
     private bool _loggedApplyFailure;
+    private bool _loggedCallbackOnlySetup;
+    private bool _loggedCallbackOnlyPacket;
 
     private float _lastPacketArrivalRealtime;
     private double _latestSnapshotTimestamp;
@@ -149,6 +160,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _networkCharacterRetargeter != null &&
         _elapsedSendTime >= EffectiveSendInterval;
 
+    private bool IsRemoteFusionCallbackOnlyMode =>
+        _receiveAndDiscardRemotePayloads &&
+        _characterBehaviour != null &&
+        !_characterBehaviour.HasInputAuthority;
+
     private void Awake()
     {
         _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
@@ -162,7 +178,6 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             _networkStatisticsInterval
         );
 
-        CreateReceiveBuffers();
         _characterBehaviour = GetComponent<INetworkCharacterBehaviour>();
 
         if (_networkCharacterRetargeter == null)
@@ -197,7 +212,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
         if (!_setupComplete ||
             _characterBehaviour == null ||
-            _characterBehaviour.HasInputAuthority)
+            _characterBehaviour.HasInputAuthority ||
+            IsRemoteFusionCallbackOnlyMode)
         {
             return;
         }
@@ -264,6 +280,18 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         }
 
         int characterId = _characterBehaviour.CharacterId;
+
+        if (IsRemoteFusionCallbackOnlyMode)
+        {
+            if (!_setupComplete ||
+                _setupCharacterId != characterId ||
+                !_loggedCallbackOnlySetup)
+            {
+                ConfigureFusionCallbackOnlyMode(characterId);
+            }
+
+            return;
+        }
 
         if (_setupComplete &&
             _setupCharacterId == characterId &&
@@ -459,6 +487,29 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
+        if (IsRemoteFusionCallbackOnlyMode)
+        {
+            _dataReadCount++;
+            _lastPacketArrivalRealtime = Time.realtimeSinceStartup;
+            _hasReceivedPacket = true;
+            _callbackOnlyDiscardedPacketsInWindow++;
+
+            if (!_loggedCallbackOnlyPacket)
+            {
+                Debug.Log(
+                    "ActorMovementNetworkHandler: FUSION_CALLBACK_ONLY " +
+                    $"received {data.Length} bytes and discarded the payload. " +
+                    "PersistentQueue=False, MovementDeserialize=False, " +
+                    "AvatarInstantiated=False.",
+                    this
+                );
+
+                _loggedCallbackOnlyPacket = true;
+            }
+
+            return;
+        }
+
         if (_receiveSlots == null || _receiveSlots.Length == 0)
         {
             CreateReceiveBuffers();
@@ -642,6 +693,38 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         );
 
         return true;
+    }
+
+    private void ConfigureFusionCallbackOnlyMode(int characterId)
+    {
+        _setupRequested = false;
+        _instantiateCharacter = false;
+        _setupCharacterId = characterId;
+        _setupComplete = true;
+        _dataIsValid = false;
+        _configuredFaceShapeCount = 0;
+
+        DisposeReceiveBuffers();
+        DisposePoseBuffers();
+
+        if (_character != null && _character != gameObject)
+        {
+            Destroy(_character);
+        }
+
+        _character = null;
+        _networkCharacterRetargeter = null;
+        gameObject.name = "RemoteCharacterFusionCallbackOnly";
+
+        Debug.Log(
+            "ActorMovementNetworkHandler: Setup completed. " +
+            $"Mode=FusionCallbackOnly, CharacterId={characterId}, " +
+            "Owner=Remote, AvatarInstantiated=False, PersistentQueue=False, " +
+            "MovementDeserialize=False.",
+            this
+        );
+
+        _loggedCallbackOnlySetup = true;
     }
 
     private void ApplyOwnership()
@@ -1579,6 +1662,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 $"({_receivedPacketsInWindow} packets, max " +
                 $"{_largestReceivedPacketInWindow} B), " +
                 $"queue {_receiveCount}/{_receiveBufferSize}, " +
+                $"callback-only discarded " +
+                $"{_callbackOnlyDiscardedPacketsInWindow}, " +
                 $"dropped {_droppedPacketsInWindow}.",
                 this
             );
@@ -1590,6 +1675,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _sentBytesInWindow = 0;
         _sentPacketsInWindow = 0;
         _droppedPacketsInWindow = 0;
+        _callbackOnlyDiscardedPacketsInWindow = 0;
         _largestReceivedPacketInWindow = 0;
         _largestSentPacketInWindow = 0;
     }
@@ -1605,6 +1691,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _loggedOversizedPacket = false;
         _loggedInvalidPose = false;
         _loggedApplyFailure = false;
+        _loggedCallbackOnlySetup = false;
+        _loggedCallbackOnlyPacket = false;
         _hasReceivedPacket = false;
         _packetStreamIsStale = false;
         _lastPacketArrivalRealtime = 0f;
