@@ -1,9 +1,10 @@
 using UnityEngine;
 
+
 public class EyeLocationSimulation : MonoBehaviour
 {
     public Transform target;
-    public Vector3 offset;   
+    public Vector3 offset;
 
     void LateUpdate()
     {
@@ -11,4 +12,5 @@ public class EyeLocationSimulation : MonoBehaviour
             transform.position = target.position + offset;
     }
 }
+
 

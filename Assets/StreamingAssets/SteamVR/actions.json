@@ -52,6 +52,11 @@
     {
       "name": "/actions/NewSet/in/righthandplace",
       "type": "pose"
+    },
+    {
+      "name": "/actions/NewSet/in/NewAction2waist",
+      "type": "pose",
+      "requirement": "suggested"
     }
   ],
   "action_sets": [

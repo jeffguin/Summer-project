@@ -43,6 +43,8 @@ namespace Valve.VR
         
         private static SteamVR_Action_Pose p_newSet_righthandplace;
         
+        private static SteamVR_Action_Pose p_newSet_NewAction2waist;
+        
         public static SteamVR_Action_Vector2 platformer_Move
         {
             get
@@ -147,6 +149,14 @@ namespace Valve.VR
             }
         }
         
+        public static SteamVR_Action_Pose newSet_NewAction2waist
+        {
+            get
+            {
+                return SteamVR_Actions.p_newSet_NewAction2waist.GetCopy<SteamVR_Action_Pose>();
+            }
+        }
+        
         private static void InitializeActionArrays()
         {
             Valve.VR.SteamVR_Input.actions = new Valve.VR.SteamVR_Action[] {
@@ -162,7 +172,8 @@ namespace Valve.VR
                     SteamVR_Actions.default_Pose,
                     SteamVR_Actions.newSet_NewAction1,
                     SteamVR_Actions.newSet_rightconcl,
-                    SteamVR_Actions.newSet_righthandplace};
+                    SteamVR_Actions.newSet_righthandplace,
+                    SteamVR_Actions.newSet_NewAction2waist};
             Valve.VR.SteamVR_Input.actionsIn = new Valve.VR.ISteamVR_Action_In[] {
                     SteamVR_Actions.platformer_Move,
                     SteamVR_Actions.platformer_Jump,
@@ -176,7 +187,8 @@ namespace Valve.VR
                     SteamVR_Actions.default_Pose,
                     SteamVR_Actions.newSet_NewAction1,
                     SteamVR_Actions.newSet_rightconcl,
-                    SteamVR_Actions.newSet_righthandplace};
+                    SteamVR_Actions.newSet_righthandplace,
+                    SteamVR_Actions.newSet_NewAction2waist};
             Valve.VR.SteamVR_Input.actionsOut = new Valve.VR.ISteamVR_Action_Out[0];
             Valve.VR.SteamVR_Input.actionsVibration = new Valve.VR.SteamVR_Action_Vibration[0];
             Valve.VR.SteamVR_Input.actionsPose = new Valve.VR.SteamVR_Action_Pose[] {
@@ -185,7 +197,8 @@ namespace Valve.VR
                     SteamVR_Actions.default_NewAction,
                     SteamVR_Actions.default_Pose,
                     SteamVR_Actions.newSet_NewAction1,
-                    SteamVR_Actions.newSet_righthandplace};
+                    SteamVR_Actions.newSet_righthandplace,
+                    SteamVR_Actions.newSet_NewAction2waist};
             Valve.VR.SteamVR_Input.actionsBoolean = new Valve.VR.SteamVR_Action_Boolean[] {
                     SteamVR_Actions.platformer_Jump,
                     SteamVR_Actions.buggy_Brake,
@@ -223,6 +236,7 @@ namespace Valve.VR
             SteamVR_Actions.p_newSet_NewAction1 = ((SteamVR_Action_Pose)(SteamVR_Action.Create<SteamVR_Action_Pose>("/actions/NewSet/in/NewAction1")));
             SteamVR_Actions.p_newSet_rightconcl = ((SteamVR_Action_Boolean)(SteamVR_Action.Create<SteamVR_Action_Boolean>("/actions/NewSet/in/rightconcl")));
             SteamVR_Actions.p_newSet_righthandplace = ((SteamVR_Action_Pose)(SteamVR_Action.Create<SteamVR_Action_Pose>("/actions/NewSet/in/righthandplace")));
+            SteamVR_Actions.p_newSet_NewAction2waist = ((SteamVR_Action_Pose)(SteamVR_Action.Create<SteamVR_Action_Pose>("/actions/NewSet/in/NewAction2waist")));
         }
     }
 }

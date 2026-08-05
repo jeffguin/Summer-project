@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.ezhex1991.ezsoftbone": {
+      "version": "https://github.com/EZhex1991/EZSoftBone.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "5cdf84c5fa440e127f8db4109ceb6664551be0ae"
+    },
     "com.meta.xr.mrutilitykit": {
       "version": "83.0.4",
       "depth": 1,
@@ -36,18 +43,26 @@
       "url": "https://packages.unity.com"
     },
     "com.meta.xr.sdk.core": {
-      "version": "83.0.4",
-      "depth": 1,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://packages.unity.com"
-    },
-    "com.meta.xr.sdk.haptics": {
-      "version": "83.0.4",
+      "version": "201.0.0",
       "depth": 1,
       "source": "registry",
       "dependencies": {
-        "com.meta.xr.sdk.core": "83.0.4"
+        "com.unity.xr.hands": "1.7.2",
+        "com.unity.modules.ui": "1.0.0",
+        "com.unity.modules.audio": "1.0.0",
+        "com.unity.modules.imgui": "1.0.0",
+        "com.unity.modules.imageconversion": "1.0.0",
+        "com.unity.modules.unitywebrequest": "1.0.0",
+        "com.unity.modules.unitywebrequestaudio": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.meta.xr.sdk.haptics": {
+      "version": "201.0.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.meta.xr.sdk.core": "201.0.0"
       },
       "url": "https://packages.unity.com"
     },
@@ -431,6 +446,19 @@
       "source": "registry",
       "dependencies": {
         "com.unity.modules.xr": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.xr.hands": {
+      "version": "1.7.2",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.modules.xr": "1.0.0",
+        "com.unity.inputsystem": "1.3.0",
+        "com.unity.mathematics": "1.2.6",
+        "com.unity.xr.core-utils": "2.2.0",
+        "com.unity.xr.management": "4.0.1"
       },
       "url": "https://packages.unity.com"
     },
