@@ -17,6 +17,8 @@ using static Unity.Collections.NativeArrayOptions;
 public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharacterHandler
 {
     private const int MaximumPacketBytes = 1024;
+    private const int IsolationOutputGuardElementCount = 128;
+    private const float IsolationFaceCanary = -12345.75f;
 
     public INetworkCharacterBehaviour CharacterBehaviour => _characterBehaviour;
     public GameObject Character => _character;
@@ -61,6 +63,15 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
              "dequeue and discard one packet during Update.")]
     [SerializeField]
     private bool _queueRemotePayloadsBeforeDiscarding;
+
+    [Tooltip("When the persistent queue isolation mode is enabled, copy every " +
+             "queued snapshot into an exact-length owning NativeArray, " +
+             "deserialize it into guarded pose buffers, and acknowledge the " +
+             "decoded baseline. The native target counts are logged and 128 " +
+             "canary elements protect each output buffer. Face denormalization, " +
+             "pose validation, interpolation and pose application remain disabled.")]
+    [SerializeField]
+    private bool _deserializeQueuedFullSnapshotsWithoutAck;
 
     [Header("Network Load")]
     [Tooltip("Hard upper limit for movement packets per second. The local pose " +
@@ -119,7 +130,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private float _elapsedSendTime;
     private float _elapsedSyncTime;
     private int _dataReadCount;
+    private int _configuredJointCount;
     private int _configuredFaceShapeCount;
+    private int _nativeTargetJointCount = -1;
+    private int _nativeTargetFaceShapeCount = -1;
 
     private float _networkStatisticsElapsed;
     private int _receivedBytesInWindow;
@@ -128,6 +142,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private int _sentPacketsInWindow;
     private int _droppedPacketsInWindow;
     private int _receiveDiscardedPacketsInWindow;
+    private int _isolatedDeserializedPacketsInWindow;
+    private int _isolatedDeserializeFailuresInWindow;
     private int _largestReceivedPacketInWindow;
     private int _largestSentPacketInWindow;
 
@@ -147,6 +163,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private bool _loggedCallbackOnlyPacket;
     private bool _loggedQueueDiscardEnqueue;
     private bool _loggedQueueDiscardDequeue;
+    private bool _loggedIsolatedDeserializeStart;
+    private bool _loggedIsolatedDeserializeSuccess;
+    private bool _loggedIsolatedDeserializeFailure;
+    private bool _nativeOutputCanaryCorrupted;
+    private long _isolatedDeserializeInvocationCount;
 
     private float _lastPacketArrivalRealtime;
     private double _latestSnapshotTimestamp;
@@ -187,6 +208,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         IsRemoteAvatarReadyDiscardMode &&
         _queueRemotePayloadsBeforeDiscarding;
 
+    private bool IsRemoteContinuousDeserializeMode =>
+        IsRemoteQueueDiscardMode &&
+        _deserializeQueuedFullSnapshotsWithoutAck;
+
     private void Awake()
     {
         _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
@@ -225,9 +250,36 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private void Update()
     {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "ACTOR_HANDLER_UPDATE_BEGIN",
+            Time.frameCount
+        );
+
+        try
+        {
+            UpdateInternal();
+        }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.RecordFramePhase(
+                "ACTOR_HANDLER_UPDATE_END",
+                Time.frameCount
+            );
+        }
+    }
+
+    private void UpdateInternal()
+    {
         if (IsRemoteQueueDiscardMode)
         {
-            DiscardNextQueuedPacketWithoutDeserializing();
+            if (IsRemoteContinuousDeserializeMode)
+            {
+                DeserializeNextExactLengthSnapshotWithoutAckOrApply();
+            }
+            else
+            {
+                DiscardNextQueuedPacketWithoutDeserializing();
+            }
         }
 
         UpdateNetworkStatistics();
@@ -488,6 +540,26 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     public void ReceiveData(NativeArray<byte> data)
     {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "ACTOR_RECEIVE_CALLBACK_BEGIN",
+            Time.frameCount
+        );
+
+        try
+        {
+            ReceiveDataInternal(data);
+        }
+        finally
+        {
+            RuntimeDiagnosticsFileLogger.RecordFramePhase(
+                "ACTOR_RECEIVE_CALLBACK_END",
+                Time.frameCount
+            );
+        }
+    }
+
+    private void ReceiveDataInternal(NativeArray<byte> data)
+    {
         if (!data.IsCreated || data.Length == 0)
         {
             return;
@@ -584,13 +656,21 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         {
             if (!_loggedQueueDiscardEnqueue)
             {
+                string mode = IsRemoteContinuousDeserializeMode
+                    ? "CONTINUOUS_EXACT_LENGTH_DESERIALIZE_WITH_ACK"
+                    : "AVATAR_READY_QUEUE_DISCARD";
+
                 Debug.Log(
                     "ActorMovementNetworkHandler: " +
-                    "AVATAR_READY_QUEUE_DISCARD enqueued " +
+                    $"{mode} enqueued " +
                     $"{data.Length} bytes into persistent slot " +
                     $"{(_receiveWriteIndex - 1 + _receiveSlots.Length) % _receiveSlots.Length}. " +
                     $"QueueDepth={_receiveCount}/{_receiveSlots.Length}, " +
-                    "MovementDeserialize=False, AckSent=False, " +
+                    $"MovementDeserialize=" +
+                    $"{IsRemoteContinuousDeserializeMode}, " +
+                    $"AckAfterDeserialize={IsRemoteContinuousDeserializeMode}, " +
+                    "FaceDenormalize=False, " +
+                    "PoseValidation=False, " +
                     "PoseApplied=False.",
                     this
                 );
@@ -719,6 +799,26 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
         _networkCharacterRetargeter.UpdateSerializationSettings();
 
+        bool nativeSerializationSettingsAvailable =
+            GetSerializationSettings(
+                _networkCharacterRetargeter.RetargetingHandle,
+                out SerializationSettings nativeSerializationSettings
+            );
+
+        bool nativeTargetSkeletonInfoAvailable =
+            GetSkeletonInfo(
+                _networkCharacterRetargeter.RetargetingHandle,
+                SkeletonType.TargetSkeleton,
+                out SkeletonInfo nativeTargetSkeletonInfo
+            );
+
+        _nativeTargetJointCount = nativeTargetSkeletonInfoAvailable
+            ? nativeTargetSkeletonInfo.JointCount
+            : -1;
+        _nativeTargetFaceShapeCount = nativeTargetSkeletonInfoAvailable
+            ? nativeTargetSkeletonInfo.BlendShapeCount
+            : -1;
+
         if (!EnsurePoseBuffers())
         {
             return false;
@@ -741,35 +841,58 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             ToggleCharacterWhenReady();
         }
 
-        string setupMode = IsRemoteQueueDiscardMode
-            ? "AvatarReadyQueueDiscard"
-            : IsRemoteAvatarReadyDiscardMode
-                ? "AvatarReadyReceiveDiscard"
-                : "Normal";
+        string setupMode = IsRemoteContinuousDeserializeMode
+            ? "ContinuousGuardedDeserializeWithAckNoApply"
+            : IsRemoteQueueDiscardMode
+                ? "AvatarReadyQueueDiscard"
+                : IsRemoteAvatarReadyDiscardMode
+                    ? "AvatarReadyReceiveDiscard"
+                    : "Normal";
 
         if (IsRemoteAvatarReadyDiscardMode)
         {
-            gameObject.name = IsRemoteQueueDiscardMode
-                ? "RemoteCharacterAvatarReadyQueueDiscard"
-                : "RemoteCharacterAvatarReadyReceiveDiscard";
+            gameObject.name = IsRemoteContinuousDeserializeMode
+                ? "RemoteCharacterContinuousGuardedDeserializeWithAck"
+                : IsRemoteQueueDiscardMode
+                    ? "RemoteCharacterAvatarReadyQueueDiscard"
+                    : "RemoteCharacterAvatarReadyReceiveDiscard";
         }
+
+        bool movementDeserializeActive =
+            !IsRemoteReceiveDiscardMode ||
+            IsRemoteContinuousDeserializeMode;
+        bool acknowledgementActive =
+            !IsRemoteReceiveDiscardMode ||
+            IsRemoteContinuousDeserializeMode;
+        bool postProcessingActive = !IsRemoteReceiveDiscardMode;
 
         Debug.Log(
             "ActorMovementNetworkHandler: Setup completed. " +
             $"Mode={setupMode}, " +
             $"CharacterId={_setupCharacterId}, " +
             $"Owner={_networkCharacterRetargeter.Owner}, " +
-            $"Joints={_bodyPose.Length}, " +
+            $"Joints={_configuredJointCount}, " +
+            $"BodyBuffer={_bodyPose.Length}, " +
+            $"NativeTargetJoints={_nativeTargetJointCount}, " +
             $"FaceShapes={_configuredFaceShapeCount}, " +
+            $"FaceBuffer={_facePose.Length}, " +
+            $"NativeTargetFaceShapes={_nativeTargetFaceShapeCount}, " +
             $"ApplyData={_applyData}, " +
             $"PersistentQueue=" +
             $"{!IsRemoteReceiveDiscardMode || IsRemoteQueueDiscardMode}, " +
-            $"MovementDeserialize={!IsRemoteReceiveDiscardMode}, " +
-            $"AckEnabled={!IsRemoteReceiveDiscardMode}, " +
+            $"MovementDeserialize={movementDeserializeActive}, " +
+            $"AckEnabled={acknowledgementActive}, " +
+            $"FaceDenormalize={postProcessingActive}, " +
+            $"PoseValidation=" +
+            $"{postProcessingActive && _validateReceivedPose}, " +
             $"PoseApplied={!IsRemoteReceiveDiscardMode && _applyData}, " +
             $"UseInterpolation={_networkCharacterRetargeter.UseInterpolation}, " +
+            $"NativeSnapshotCapacity=" +
+            $"{(nativeSerializationSettingsAvailable ? nativeSerializationSettings.NumberOfSnapshots : -1)}, " +
+            $"OutputGuardElements=" +
+            $"{(IsRemoteContinuousDeserializeMode ? IsolationOutputGuardElementCount : 0)}, " +
             $"StaleTimeout={_stalePacketTimeoutSeconds:F2}s, " +
-            $"ValidatePose={_validateReceivedPose}.",
+            $"ValidatePoseConfigured={_validateReceivedPose}.",
             this
         );
 
@@ -783,7 +906,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _setupCharacterId = characterId;
         _setupComplete = true;
         _dataIsValid = false;
+        _configuredJointCount = 0;
         _configuredFaceShapeCount = 0;
+        _nativeTargetJointCount = -1;
+        _nativeTargetFaceShapeCount = -1;
 
         DisposeReceiveBuffers();
         DisposePoseBuffers();
@@ -962,17 +1088,40 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return false;
         }
 
-        EnsureArraySize(ref _bodyPose, jointCount);
+        _configuredJointCount = jointCount;
+
+        int nativeJointCount = Mathf.Max(0, _nativeTargetJointCount);
+        int bodyContentLength = Mathf.Max(jointCount, nativeJointCount);
+        // DeserializeSkeletonAndFace receives raw output pointers without
+        // managed array lengths. The native target skeleton therefore decides
+        // how many elements it writes. The configured avatar can expose fewer
+        // mapped face shapes than the native target (31 versus 83 in Suisei),
+        // so every receive buffer must satisfy the native count even though
+        // only the configured mappings are applied to the model.
+        int bodyBufferLength = bodyContentLength +
+            (IsRemoteContinuousDeserializeMode
+                ? IsolationOutputGuardElementCount
+                : 0);
+
+        EnsureArraySize(ref _bodyPose, bodyBufferLength);
 
         _configuredFaceShapeCount = Mathf.Max(0, faceShapeCount);
 
         // SDK v83 dereferences the face pointer unconditionally. Keep a
         // one-element buffer for body-only characters so the pointer is valid.
-        int faceBufferLength = Mathf.Max(1, _configuredFaceShapeCount);
+        int nativeFaceShapeCount = Mathf.Max(0, _nativeTargetFaceShapeCount);
+        int faceContentLength = Mathf.Max(
+            1,
+            Mathf.Max(_configuredFaceShapeCount, nativeFaceShapeCount)
+        );
+        int faceBufferLength = faceContentLength +
+            (IsRemoteContinuousDeserializeMode
+                ? IsolationOutputGuardElementCount
+                : 0);
         EnsureArraySize(ref _facePose, faceBufferLength);
 
         bool ready = _bodyPose.IsCreated &&
-                     _bodyPose.Length == jointCount &&
+                     _bodyPose.Length == bodyBufferLength &&
                      _facePose.IsCreated &&
                      _facePose.Length == faceBufferLength;
 
@@ -1109,6 +1258,289 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         }
     }
 
+    private void DeserializeNextExactLengthSnapshotWithoutAckOrApply()
+    {
+        if (!_setupComplete ||
+            _receiveCount <= 0 ||
+            _receiveSlots == null ||
+            _receiveLengths == null)
+        {
+            return;
+        }
+
+        if (_nativeOutputCanaryCorrupted)
+        {
+            DiscardNextQueuedPacketWithoutDeserializing();
+            return;
+        }
+
+        int slotIndex = _receiveReadIndex;
+        int dataLength = _receiveLengths[slotIndex];
+
+        _receiveLengths[slotIndex] = 0;
+        _receiveReadIndex =
+            (_receiveReadIndex + 1) % _receiveSlots.Length;
+        _receiveCount--;
+
+        if (dataLength <= 0)
+        {
+            return;
+        }
+
+        if (_networkCharacterRetargeter == null ||
+            _networkCharacterRetargeter.RetargetingHandle == INVALID_HANDLE ||
+            !_bodyPose.IsCreated ||
+            !_facePose.IsCreated)
+        {
+            // Put this packet back at the head logically by restoring the slot
+            // bookkeeping. Setup normally guarantees the handle and buffers are
+            // ready, but do not silently consume a diagnostic sample.
+            _receiveReadIndex = slotIndex;
+            _receiveLengths[slotIndex] = dataLength;
+            _receiveCount++;
+            return;
+        }
+
+        // Match Meta's v83 NetworkCharacterHandler input ownership exactly
+        // for this isolation test. The SDK receives only a raw byte pointer
+        // (there is no length argument in DeserializeSkeletonAndFace), so do
+        // not pass a non-owning view backed by a larger 1024-byte ring slot.
+        // An exact-length owner also prevents stale bytes after dataLength
+        // from being reachable by native code if a packet header is decoded
+        // incorrectly.
+        NativeArray<byte> data = new NativeArray<byte>(
+            dataLength,
+            Persistent,
+            UninitializedMemory
+        );
+
+        NativeArray<byte>.Copy(
+            _receiveSlots[slotIndex],
+            0,
+            data,
+            0,
+            dataLength
+        );
+
+        long invocation = ++_isolatedDeserializeInvocationCount;
+
+        if (!_loggedIsolatedDeserializeStart)
+        {
+            Debug.Log(
+                "ActorMovementNetworkHandler: " +
+                "CONTINUOUS_GUARDED_DESERIALIZE_WITH_ACK entering native " +
+                $"deserialize. Invocation={invocation}, PacketBytes={dataLength}, " +
+                $"Joints={_configuredJointCount}, BodyBuffer={_bodyPose.Length}, " +
+                $"NativeTargetJoints={_nativeTargetJointCount}, " +
+                $"FaceShapes={_configuredFaceShapeCount}, " +
+                $"FaceBuffer={_facePose.Length}, " +
+                $"NativeTargetFaceShapes={_nativeTargetFaceShapeCount}, " +
+                $"GuardElements={IsolationOutputGuardElementCount}, " +
+                "AckAfterSuccess=True, " +
+                "InputBuffer=ExactLengthPersistentOwner, " +
+                "FaceDenormalize=False, PoseValidation=False, " +
+                "PoseApplied=False.",
+                this
+            );
+
+            _loggedIsolatedDeserializeStart = true;
+        }
+
+        RuntimeDiagnosticsFileLogger.RecordMainThreadActivity(
+            "MOVEMENT_GUARDED_DESERIALIZE_BEGIN",
+            invocation
+        );
+
+        int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
+            "MOVEMENT_GUARDED_DESERIALIZE"
+        );
+
+        try
+        {
+            FillIsolationOutputCanaries();
+
+            bool success = DeserializeSkeletonAndFace(
+                _networkCharacterRetargeter.RetargetingHandle,
+                data,
+                SERIALIZATION_VERSION_CURRENT,
+                out double snapshotTimestamp,
+                out _,
+                out int ack,
+                ref _bodyPose,
+                ref _facePose
+            );
+
+            _dataIsValid = false;
+
+            if (TryGetIsolationOutputCanaryCorruption(
+                    out string canaryCorruption))
+            {
+                _nativeOutputCanaryCorrupted = true;
+                _isolatedDeserializeFailuresInWindow++;
+
+                Debug.LogError(
+                    "ActorMovementNetworkHandler: Native Movement SDK " +
+                    "deserialize wrote beyond its declared target pose " +
+                    $"output. Invocation={invocation}, {canaryCorruption}. " +
+                    "All later movement packets will be discarded without " +
+                    "calling native code so the Unity process remains safe.",
+                    this
+                );
+
+                return;
+            }
+
+            if (!success)
+            {
+                _isolatedDeserializeFailuresInWindow++;
+
+                if (!_loggedIsolatedDeserializeFailure)
+                {
+                    Debug.LogError(
+                        "ActorMovementNetworkHandler: " +
+                        "CONTINUOUS_GUARDED_DESERIALIZE_WITH_ACK returned false. " +
+                        $"Invocation={invocation}, PacketBytes={dataLength}, " +
+                        "AckSent=False.",
+                        this
+                    );
+
+                    _loggedIsolatedDeserializeFailure = true;
+                }
+
+                return;
+            }
+
+            _isolatedDeserializedPacketsInWindow++;
+            SendAck(ack);
+
+            if (!_loggedIsolatedDeserializeSuccess)
+            {
+                Debug.Log(
+                    "ActorMovementNetworkHandler: " +
+                    "CONTINUOUS_GUARDED_DESERIALIZE_WITH_ACK first success. " +
+                    $"Invocation={invocation}, PacketBytes={dataLength}, " +
+                    $"SnapshotTime={snapshotTimestamp:F3}, " +
+                    $"DecodedAck={ack}, AckSent=True, " +
+                    "FaceDenormalize=False, PoseValidation=False, " +
+                    "PoseApplied=False.",
+                    this
+                );
+
+                _loggedIsolatedDeserializeSuccess = true;
+            }
+        }
+        catch (Exception exception)
+        {
+            _dataIsValid = false;
+            _isolatedDeserializeFailuresInWindow++;
+
+            if (!_loggedIsolatedDeserializeFailure)
+            {
+                Debug.LogError(
+                    "ActorMovementNetworkHandler: " +
+                    "CONTINUOUS_GUARDED_DESERIALIZE_WITH_ACK threw an exception. " +
+                    $"Invocation={invocation}. " +
+                    exception,
+                    this
+                );
+
+                _loggedIsolatedDeserializeFailure = true;
+            }
+        }
+        finally
+        {
+            if (data.IsCreated)
+            {
+                data.Dispose();
+            }
+
+            RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
+            RuntimeDiagnosticsFileLogger.RecordMainThreadActivity(
+                "MOVEMENT_GUARDED_DESERIALIZE_END",
+                invocation
+            );
+        }
+    }
+
+    private void FillIsolationOutputCanaries()
+    {
+        NativeTransform bodyCanary = GetIsolationBodyCanary();
+        int bodyGuardStart = GetIsolationBodyGuardStart();
+
+        for (int i = bodyGuardStart; i < _bodyPose.Length; i++)
+        {
+            _bodyPose[i] = bodyCanary;
+        }
+
+        int faceGuardStart = GetIsolationFaceGuardStart();
+        for (int i = faceGuardStart; i < _facePose.Length; i++)
+        {
+            _facePose[i] = IsolationFaceCanary;
+        }
+    }
+
+    private bool TryGetIsolationOutputCanaryCorruption(out string details)
+    {
+        NativeTransform bodyCanary = GetIsolationBodyCanary();
+        int bodyGuardStart = GetIsolationBodyGuardStart();
+
+        for (int i = bodyGuardStart; i < _bodyPose.Length; i++)
+        {
+            if (_bodyPose[i] != bodyCanary)
+            {
+                details =
+                    $"BodyGuardIndex={i}, BodyGuardStart={bodyGuardStart}, " +
+                    $"BodyBuffer={_bodyPose.Length}, " +
+                    $"Observed={_bodyPose[i]}";
+                return true;
+            }
+        }
+
+        int faceGuardStart = GetIsolationFaceGuardStart();
+        for (int i = faceGuardStart; i < _facePose.Length; i++)
+        {
+            if (_facePose[i] != IsolationFaceCanary)
+            {
+                details =
+                    $"FaceGuardIndex={i}, FaceGuardStart={faceGuardStart}, " +
+                    $"FaceBuffer={_facePose.Length}, " +
+                    $"Observed={_facePose[i]:R}";
+                return true;
+            }
+        }
+
+        details = string.Empty;
+        return false;
+    }
+
+    private int GetIsolationBodyGuardStart()
+    {
+        return Mathf.Max(
+            _configuredJointCount,
+            Mathf.Max(0, _nativeTargetJointCount)
+        );
+    }
+
+    private int GetIsolationFaceGuardStart()
+    {
+        return Mathf.Max(
+            1,
+            Mathf.Max(
+                _configuredFaceShapeCount,
+                Mathf.Max(0, _nativeTargetFaceShapeCount)
+            )
+        );
+    }
+
+    private static NativeTransform GetIsolationBodyCanary()
+    {
+        return new NativeTransform(
+            new Quaternion(12.25f, -23.5f, 34.75f, -45.125f),
+            new Vector3(56.25f, -67.5f, 78.75f),
+            new Vector3(-89.125f, 90.25f, -101.5f)
+        );
+    }
+
     private void TryReceiveData(float networkTime, float renderTime)
     {
         if (!_setupComplete ||
@@ -1175,10 +1607,24 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return false;
         }
 
-        // GetSubArray creates a non-owning view. The persistent owner remains
-        // allocated in the ring and is reused by the next received packet.
-        NativeArray<byte> data =
-            _receiveSlots[slotIndex].GetSubArray(0, dataLength);
+        // Match the SDK's own NetworkCharacterHandler ownership contract and
+        // the stable isolation test: pass an exact-length owning allocation.
+        // The native API receives only a raw pointer, not a byte count, so a
+        // view into a larger 1024-byte ring slot would also expose stale tail
+        // bytes if a malformed header were ever decoded.
+        NativeArray<byte> data = new NativeArray<byte>(
+            dataLength,
+            Persistent,
+            UninitializedMemory
+        );
+
+        NativeArray<byte>.Copy(
+            _receiveSlots[slotIndex],
+            0,
+            data,
+            0,
+            dataLength
+        );
 
         int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
             "MOVEMENT_DESERIALIZE"
@@ -1254,6 +1700,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         }
         finally
         {
+            if (data.IsCreated)
+            {
+                data.Dispose();
+            }
+
             RuntimeDiagnosticsFileLogger.EndCriticalStage(stageToken);
         }
     }
@@ -1785,6 +2236,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 $"queue {_receiveCount}/{_receiveBufferSize}, " +
                 $"receive-discarded " +
                 $"{_receiveDiscardedPacketsInWindow}, " +
+                $"isolated-deserialized " +
+                $"{_isolatedDeserializedPacketsInWindow}, " +
+                $"isolated-deserialize-failed " +
+                $"{_isolatedDeserializeFailuresInWindow}, " +
                 $"dropped {_droppedPacketsInWindow}.",
                 this
             );
@@ -1797,6 +2252,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _sentPacketsInWindow = 0;
         _droppedPacketsInWindow = 0;
         _receiveDiscardedPacketsInWindow = 0;
+        _isolatedDeserializedPacketsInWindow = 0;
+        _isolatedDeserializeFailuresInWindow = 0;
         _largestReceivedPacketInWindow = 0;
         _largestSentPacketInWindow = 0;
     }
@@ -1816,6 +2273,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _loggedCallbackOnlyPacket = false;
         _loggedQueueDiscardEnqueue = false;
         _loggedQueueDiscardDequeue = false;
+        _loggedIsolatedDeserializeStart = false;
+        _loggedIsolatedDeserializeSuccess = false;
+        _loggedIsolatedDeserializeFailure = false;
+        _isolatedDeserializeInvocationCount = 0;
         _hasReceivedPacket = false;
         _packetStreamIsStale = false;
         _lastPacketArrivalRealtime = 0f;

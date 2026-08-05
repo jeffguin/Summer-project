@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -15,6 +16,8 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
     private const int MaximumCapturedTextLength = 2048;
     private const double DuplicateWarningWindowSeconds = 5d;
     private const double CriticalStageTimeoutSeconds = 0.5d;
+    private const double MainThreadWatchdogTimeoutSeconds = 2d;
+    private const double MainThreadWatchdogRepeatSeconds = 2d;
     private const int CriticalStagePollMilliseconds = 100;
 
     private static RuntimeDiagnosticsFileLogger instance;
@@ -37,6 +40,15 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
     private long criticalStageStartedAt;
     private int criticalStageToken;
     private int reportedCriticalStageToken;
+    private long lastMainThreadPulseAt;
+    private long reportedMainThreadPulseAt;
+    private long lastMainThreadWatchdogReportAt;
+    private int lastMainThreadFrame;
+    private string lastMainThreadActivity = "NONE";
+    private long lastMainThreadActivitySequence;
+    private string lastFramePhase = "LOGGER_AWAKE";
+    private int lastFramePhaseFrame;
+    private long lastFramePhaseAt;
 
     private sealed class WarningRateState
     {
@@ -88,6 +100,11 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
                 "AvatarRuntimeDiagnostics.log"
             );
 
+            string archivedPreviousLog = TryArchivePreviousLog(
+                logDirectory,
+                logPath
+            );
+
             writer = new StreamWriter(
                 logPath,
                 false,
@@ -99,6 +116,16 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
 
             Application.logMessageReceivedThreaded += HandleUnityLog;
             SceneManager.sceneLoaded += HandleSceneLoaded;
+
+            lock (criticalStageLock)
+            {
+                lastMainThreadPulseAt =
+                    System.Diagnostics.Stopwatch.GetTimestamp();
+                lastMainThreadFrame = Time.frameCount;
+                lastFramePhaseAt = lastMainThreadPulseAt;
+                lastFramePhaseFrame = Time.frameCount;
+            }
+
             criticalStageTimer = new System.Threading.Timer(
                 CheckCriticalStage,
                 null,
@@ -117,6 +144,14 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
                 $"product={Application.productName}"
             );
 
+            if (!string.IsNullOrEmpty(archivedPreviousLog))
+            {
+                WriteLine(
+                    $"PREVIOUS_LOG_ARCHIVED utc={DateTime.UtcNow:O} " +
+                    $"path={LimitAndFlatten(archivedPreviousLog)}"
+                );
+            }
+
             Debug.Log(
                 "RuntimeDiagnosticsFileLogger: Writing diagnostics to " +
                 logPath
@@ -134,6 +169,8 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
 
     private void Update()
     {
+        RecordMainThreadPulseInternal(Time.frameCount);
+
         float deltaTime = Mathf.Max(0f, Time.unscaledDeltaTime);
         heartbeatElapsed += deltaTime;
         frameElapsed += deltaTime;
@@ -170,7 +207,8 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
             $"frame={Time.frameCount} fps={framesPerSecond:F1} " +
             $"allocatedMB={totalAllocatedMemory / (1024f * 1024f):F1} " +
             $"monoMB={monoUsedMemory / (1024f * 1024f):F1} " +
-            $"runners={runnerCount} scenes={scenes}"
+            $"runners={runnerCount} scenes={scenes} " +
+            GetProcessSnapshot()
         );
 
         heartbeatElapsed = 0f;
@@ -366,6 +404,28 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
         logger.EndCriticalStageInternal(token);
     }
 
+    public static void RecordMainThreadActivity(
+        string activity,
+        long sequence = 0)
+    {
+        RuntimeDiagnosticsFileLogger logger = instance;
+
+        if (logger == null || string.IsNullOrEmpty(activity))
+            return;
+
+        logger.RecordMainThreadActivityInternal(activity, sequence);
+    }
+
+    public static void RecordFramePhase(string phase, int frame)
+    {
+        RuntimeDiagnosticsFileLogger logger = instance;
+
+        if (logger == null || string.IsNullOrEmpty(phase))
+            return;
+
+        logger.RecordFramePhaseInternal(phase, frame);
+    }
+
     private bool ShouldSuppressDuplicateWarning(
         string condition,
         out int suppressedDuplicates)
@@ -433,41 +493,227 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
         }
     }
 
+    private void RecordMainThreadPulseInternal(int frame)
+    {
+        lock (criticalStageLock)
+        {
+            lastMainThreadPulseAt =
+                System.Diagnostics.Stopwatch.GetTimestamp();
+            lastMainThreadFrame = frame;
+        }
+    }
+
+    private void RecordMainThreadActivityInternal(
+        string activity,
+        long sequence)
+    {
+        lock (criticalStageLock)
+        {
+            lastMainThreadActivity = activity;
+            lastMainThreadActivitySequence = sequence;
+        }
+    }
+
+    private void RecordFramePhaseInternal(string phase, int frame)
+    {
+        lock (criticalStageLock)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            lastMainThreadPulseAt = now;
+            lastMainThreadFrame = frame;
+            lastFramePhase = phase;
+            lastFramePhaseFrame = frame;
+            lastFramePhaseAt = now;
+        }
+    }
+
     private void CheckCriticalStage(object state)
     {
         string stalledStage = null;
         double elapsedMilliseconds = 0d;
+        bool mainThreadStalled = false;
+        double mainThreadStallMilliseconds = 0d;
+        int stalledAtFrame = 0;
+        string lastActivity = null;
+        long lastActivitySequence = 0;
+        string activeCriticalStage = null;
+        string framePhase = null;
+        int framePhaseFrame = 0;
+        double framePhaseAgeMilliseconds = 0d;
 
         lock (criticalStageLock)
         {
-            if (criticalStage == null ||
-                criticalStageStartedAt == 0 ||
-                reportedCriticalStageToken == criticalStageToken)
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            activeCriticalStage = criticalStage;
+
+            if (criticalStage != null &&
+                criticalStageStartedAt != 0 &&
+                reportedCriticalStageToken != criticalStageToken)
             {
-                return;
+                long elapsedTicks = now - criticalStageStartedAt;
+                double elapsedSeconds =
+                    elapsedTicks /
+                    (double)System.Diagnostics.Stopwatch.Frequency;
+
+                if (elapsedSeconds >= CriticalStageTimeoutSeconds)
+                {
+                    reportedCriticalStageToken = criticalStageToken;
+                    stalledStage = criticalStage;
+                    elapsedMilliseconds = elapsedSeconds * 1000d;
+                }
             }
 
-            long elapsedTicks =
-                System.Diagnostics.Stopwatch.GetTimestamp() -
-                criticalStageStartedAt;
+            if (lastMainThreadPulseAt != 0)
+            {
+                long pulseElapsedTicks = now - lastMainThreadPulseAt;
+                double pulseElapsedSeconds =
+                    pulseElapsedTicks /
+                    (double)System.Diagnostics.Stopwatch.Frequency;
 
-            double elapsedSeconds =
-                elapsedTicks /
-                (double)System.Diagnostics.Stopwatch.Frequency;
+                double secondsSinceWatchdogReport =
+                    lastMainThreadWatchdogReportAt == 0
+                        ? double.MaxValue
+                        : (now - lastMainThreadWatchdogReportAt) /
+                          (double)System.Diagnostics.Stopwatch.Frequency;
 
-            if (elapsedSeconds < CriticalStageTimeoutSeconds)
-                return;
-
-            reportedCriticalStageToken = criticalStageToken;
-            stalledStage = criticalStage;
-            elapsedMilliseconds = elapsedSeconds * 1000d;
+                if (pulseElapsedSeconds >= MainThreadWatchdogTimeoutSeconds &&
+                    (reportedMainThreadPulseAt != lastMainThreadPulseAt ||
+                     secondsSinceWatchdogReport >=
+                     MainThreadWatchdogRepeatSeconds))
+                {
+                    reportedMainThreadPulseAt = lastMainThreadPulseAt;
+                    lastMainThreadWatchdogReportAt = now;
+                    mainThreadStalled = true;
+                    mainThreadStallMilliseconds =
+                        pulseElapsedSeconds * 1000d;
+                    stalledAtFrame = lastMainThreadFrame;
+                    lastActivity = lastMainThreadActivity;
+                    lastActivitySequence = lastMainThreadActivitySequence;
+                    framePhase = lastFramePhase;
+                    framePhaseFrame = lastFramePhaseFrame;
+                    framePhaseAgeMilliseconds = lastFramePhaseAt == 0
+                        ? 0d
+                        : (now - lastFramePhaseAt) * 1000d /
+                          System.Diagnostics.Stopwatch.Frequency;
+                }
+            }
         }
 
-        WriteLine(
-            $"MAIN_THREAD_STALL utc={DateTime.UtcNow:O} " +
-            $"stage={stalledStage} " +
-            $"durationMs={elapsedMilliseconds:F0}"
-        );
+        if (stalledStage != null)
+        {
+            WriteLine(
+                $"MAIN_THREAD_STALL utc={DateTime.UtcNow:O} " +
+                $"stage={stalledStage} " +
+                $"durationMs={elapsedMilliseconds:F0}"
+            );
+        }
+
+        if (mainThreadStalled)
+        {
+            WriteLine(
+                $"MAIN_THREAD_WATCHDOG utc={DateTime.UtcNow:O} " +
+                $"durationMs={mainThreadStallMilliseconds:F0} " +
+                $"lastFrame={stalledAtFrame} " +
+                $"criticalStage={activeCriticalStage ?? "NONE"} " +
+                $"lastPhase={framePhase ?? "NONE"} " +
+                $"phaseFrame={framePhaseFrame} " +
+                $"phaseAgeMs={framePhaseAgeMilliseconds:F0} " +
+                $"lastActivity={lastActivity ?? "NONE"} " +
+                $"activitySequence={lastActivitySequence} " +
+                GetProcessSnapshot()
+            );
+        }
+    }
+
+    private static string TryArchivePreviousLog(
+        string logDirectory,
+        string currentLogPath)
+    {
+        if (!File.Exists(currentLogPath))
+            return string.Empty;
+
+        try
+        {
+            string archiveDirectory = Path.Combine(
+                logDirectory,
+                "Archive"
+            );
+            Directory.CreateDirectory(archiveDirectory);
+
+            string archivePath = Path.Combine(
+                archiveDirectory,
+                "AvatarRuntimeDiagnostics.previous." +
+                DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") +
+                ".log"
+            );
+
+            File.Copy(currentLogPath, archivePath, false);
+            return archivePath;
+        }
+        catch (Exception exception)
+        {
+            return "ARCHIVE_FAILED:" + exception.GetType().Name + ":" +
+                   exception.Message;
+        }
+    }
+
+    private static string GetProcessSnapshot()
+    {
+        try
+        {
+            using System.Diagnostics.Process process =
+                System.Diagnostics.Process.GetCurrentProcess();
+            process.Refresh();
+
+            var runningThreads = new StringBuilder();
+            int runningThreadCount = 0;
+
+            foreach (System.Diagnostics.ProcessThread thread in
+                     process.Threads)
+            {
+                try
+                {
+                    if (thread.ThreadState !=
+                        System.Diagnostics.ThreadState.Running)
+                    {
+                        continue;
+                    }
+
+                    if (runningThreadCount < 8)
+                    {
+                        if (runningThreads.Length > 0)
+                            runningThreads.Append(',');
+
+                        runningThreads.Append(thread.Id);
+                        runningThreads.Append(':');
+                        runningThreads.Append(
+                            thread.TotalProcessorTime.TotalSeconds.ToString(
+                                "F1"
+                            )
+                        );
+                    }
+
+                    runningThreadCount++;
+                }
+                catch
+                {
+                    // A thread may exit while the process snapshot is read.
+                }
+            }
+
+            return
+                $"processCpuSeconds={process.TotalProcessorTime.TotalSeconds:F1} " +
+                $"processPrivateMB={process.PrivateMemorySize64 / (1024d * 1024d):F1} " +
+                $"processWorkingSetMB={process.WorkingSet64 / (1024d * 1024d):F1} " +
+                $"processHandles={process.HandleCount} " +
+                $"processThreads={process.Threads.Count} " +
+                $"runningThreadCount={runningThreadCount} " +
+                $"runningThreads={runningThreads}";
+        }
+        catch (Exception exception)
+        {
+            return "processSnapshotError=" + exception.GetType().Name;
+        }
     }
 
     private static string LimitAndFlatten(string value)
@@ -531,6 +777,114 @@ public sealed class RuntimeDiagnosticsFileLogger : MonoBehaviour
             SceneManager.sceneLoaded -= HandleSceneLoaded;
             writer?.Dispose();
             writer = null;
+        }
+    }
+}
+
+internal static class RuntimeFramePhaseProbeBootstrap
+{
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void Bootstrap()
+    {
+        var probeObject = new GameObject("Runtime Frame Phase Probes");
+        UnityEngine.Object.DontDestroyOnLoad(probeObject);
+        probeObject.AddComponent<RuntimeEarlyFramePhaseProbe>();
+        probeObject.AddComponent<RuntimeBeforeMovementFramePhaseProbe>();
+        probeObject.AddComponent<RuntimeAfterMovementFramePhaseProbe>();
+        probeObject.AddComponent<RuntimeLateFramePhaseProbe>();
+    }
+}
+
+[DefaultExecutionOrder(-32000)]
+internal sealed class RuntimeEarlyFramePhaseProbe : MonoBehaviour
+{
+    private void FixedUpdate()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "FIXED_UPDATE_EARLY",
+            Time.frameCount
+        );
+    }
+
+    private void Update()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "UPDATE_EARLY",
+            Time.frameCount
+        );
+    }
+
+    private void LateUpdate()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "LATE_UPDATE_EARLY",
+            Time.frameCount
+        );
+    }
+}
+
+[DefaultExecutionOrder(99)]
+internal sealed class RuntimeBeforeMovementFramePhaseProbe : MonoBehaviour
+{
+    private void Update()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "BEFORE_ACTOR_HANDLER_UPDATE",
+            Time.frameCount
+        );
+    }
+}
+
+[DefaultExecutionOrder(101)]
+internal sealed class RuntimeAfterMovementFramePhaseProbe : MonoBehaviour
+{
+    private void Update()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "AFTER_ACTOR_HANDLER_UPDATE",
+            Time.frameCount
+        );
+    }
+}
+
+[DefaultExecutionOrder(32000)]
+internal sealed class RuntimeLateFramePhaseProbe : MonoBehaviour
+{
+    private void FixedUpdate()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "FIXED_UPDATE_LATE",
+            Time.frameCount
+        );
+    }
+
+    private void Update()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "UPDATE_LATE",
+            Time.frameCount
+        );
+    }
+
+    private void LateUpdate()
+    {
+        RuntimeDiagnosticsFileLogger.RecordFramePhase(
+            "LATE_UPDATE_LATE",
+            Time.frameCount
+        );
+    }
+
+    private IEnumerator Start()
+    {
+        var endOfFrame = new WaitForEndOfFrame();
+
+        while (true)
+        {
+            yield return endOfFrame;
+            RuntimeDiagnosticsFileLogger.RecordFramePhase(
+                "END_OF_FRAME",
+                Time.frameCount
+            );
         }
     }
 }
