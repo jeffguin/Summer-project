@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using Fusion;
 using Unity.WebRTC;
 using UnityEngine;
@@ -57,6 +58,7 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
     [SerializeField] private float connectionTimeoutSeconds = 20f;
 
     private RTCPeerConnection audioPeerConnection;
+    private RTCRtpTransceiver audioTransceiver;
     private RTCRtpSender localAudioSender;
     private AudioStreamTrack remoteAudioTrack;
     private Coroutine operationCoroutine;
@@ -65,6 +67,10 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
     private bool signalHubSubscribed;
     private bool remoteDescriptionSet;
     private bool iceConnected;
+    private bool remoteAudioSamplesReceived;
+    private int remoteAudioCallbackPending;
+    private long remoteAudioCallbackCount;
+    private long remoteAudioSampleCount;
     private string activeSessionId = "";
 
     private readonly Queue<IceSignal> pendingRemoteCandidates = new Queue<IceSignal>();
@@ -116,6 +122,34 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
     {
         WebRtcRuntimePump.EnsureExists();
         EnsureAudioObjects();
+    }
+
+    private void Update()
+    {
+        // AudioStreamTrack.onReceived runs on a worker/audio thread. Marshal
+        // the state transition back to Unity's main thread.
+        if (Interlocked.Exchange(ref remoteAudioCallbackPending, 0) == 0 ||
+            remoteAudioTrack == null ||
+            string.IsNullOrEmpty(activeSessionId) ||
+            remoteAudioSamplesReceived)
+        {
+            return;
+        }
+
+        remoteAudioSamplesReceived = true;
+
+        Debug.Log(
+            Prefix + "Decoded remote audio samples received. Callbacks = " +
+            Interlocked.Read(ref remoteAudioCallbackCount) +
+            ", Samples = " + Interlocked.Read(ref remoteAudioSampleCount) + "."
+        );
+
+        SetState(
+            iceConnected ? SessionState.Connected : SessionState.Connecting,
+            iceConnected
+                ? "ICE connected and decoded remote audio samples are playing."
+                : "Decoded remote audio samples received; waiting for ICE connection."
+        );
     }
 
     private void OnEnable()
@@ -264,7 +298,11 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
 
         SetState(SessionState.LocalTrackReady, "Actor microphone track is ready.");
 
-        if (!CreatePeerConnectionAndAddLocalTrack())
+        // The Actor is the answerer. Do not AddTrack before applying the
+        // remote offer: doing so can create a second, unassociated audio
+        // transceiver. The local track is attached to the offered audio
+        // transceiver in HandleOfferRoutine instead.
+        if (!CreatePeerConnection(false))
         {
             Fail("PeerConnectionCreationFailed", "Could not create the Actor audio PeerConnection.", false);
             operationCoroutine = null;
@@ -308,7 +346,7 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
 
         SetState(SessionState.LocalTrackReady, "Audience microphone track is ready.");
 
-        if (!CreatePeerConnectionAndAddLocalTrack())
+        if (!CreatePeerConnection(true))
         {
             Fail("PeerConnectionCreationFailed", "Could not create the Audience audio PeerConnection.", true);
             operationCoroutine = null;
@@ -343,7 +381,13 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
             sdp = offer.sdp
         };
 
-        SendJsonToOther(OfferType, JsonUtility.ToJson(offerSignal));
+        if (!SendJsonToOther(OfferType, JsonUtility.ToJson(offerSignal)))
+        {
+            Fail("ActorUnavailable", "No Actor player is available for the audio offer.", false);
+            operationCoroutine = null;
+            yield break;
+        }
+
         SetState(SessionState.Negotiating, "Audience audio offer sent.");
         StartConnectionTimeout(activeSessionId);
         operationCoroutine = null;
@@ -360,7 +404,7 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
             yield break;
         }
 
-        if (audioPeerConnection == null && !CreatePeerConnectionAndAddLocalTrack())
+        if (audioPeerConnection == null && !CreatePeerConnection(false))
         {
             Fail("PeerConnectionMissing", "Actor audio PeerConnection is unavailable.", true);
             yield break;
@@ -385,6 +429,16 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         remoteDescriptionSet = true;
         FlushPendingRemoteCandidates();
 
+        if (!AttachActorTrackToOfferedTransceiver())
+        {
+            Fail(
+                "AudioTransceiverBindingFailed",
+                "Could not bind the Actor microphone to the Audience audio transceiver.",
+                true
+            );
+            yield break;
+        }
+
         RTCSessionDescriptionAsyncOperation answerOperation = audioPeerConnection.CreateAnswer();
         yield return answerOperation;
 
@@ -405,14 +459,17 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
             yield break;
         }
 
-        SendJsonToOther(
-            AnswerType,
-            JsonUtility.ToJson(new SessionSignal
-            {
-                sessionId = activeSessionId,
-                sdp = answer.sdp
-            })
-        );
+        if (!SendJsonToOther(
+                AnswerType,
+                JsonUtility.ToJson(new SessionSignal
+                {
+                    sessionId = activeSessionId,
+                    sdp = answer.sdp
+                })))
+        {
+            Fail("AudienceUnavailable", "No Audience player is available for the audio answer.", false);
+            yield break;
+        }
 
         SetState(SessionState.Connecting, "Actor audio answer sent; connecting ICE.");
     }
@@ -449,7 +506,7 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         SetState(SessionState.Connecting, "Audience received the Actor answer; connecting ICE.");
     }
 
-    private bool CreatePeerConnectionAndAddLocalTrack()
+    private bool CreatePeerConnection(bool addLocalTrackAsOfferer)
     {
         if (captureService == null || captureService.Track == null)
             return false;
@@ -460,12 +517,70 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         {
             audioPeerConnection = new RTCPeerConnection(ref configuration);
             ConfigurePeerConnectionCallbacks();
-            localAudioSender = audioPeerConnection.AddTrack(captureService.Track);
+
+            if (!addLocalTrackAsOfferer)
+                return true;
+
+            audioTransceiver = audioPeerConnection.AddTransceiver(
+                captureService.Track,
+                new RTCRtpTransceiverInit
+                {
+                    direction = RTCRtpTransceiverDirection.SendRecv
+                }
+            );
+            localAudioSender = audioTransceiver != null
+                ? audioTransceiver.Sender
+                : null;
+
             return localAudioSender != null;
         }
         catch (Exception exception)
         {
             Debug.LogError(Prefix + "PeerConnection creation failed: " + exception);
+            return false;
+        }
+    }
+
+    private bool AttachActorTrackToOfferedTransceiver()
+    {
+        if (role != EndpointRole.Actor ||
+            audioPeerConnection == null ||
+            captureService == null ||
+            captureService.Track == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (audioTransceiver == null)
+            {
+                foreach (RTCRtpTransceiver transceiver in audioPeerConnection.GetTransceivers())
+                {
+                    MediaStreamTrack receiverTrack = transceiver?.Receiver?.Track;
+                    if (receiverTrack != null && receiverTrack.Kind == TrackKind.Audio)
+                    {
+                        audioTransceiver = transceiver;
+                        break;
+                    }
+                }
+            }
+
+            if (audioTransceiver == null || audioTransceiver.Sender == null)
+                return false;
+
+            if (!audioTransceiver.Sender.ReplaceTrack(captureService.Track))
+                return false;
+
+            audioTransceiver.Direction = RTCRtpTransceiverDirection.SendRecv;
+            localAudioSender = audioTransceiver.Sender;
+
+            Debug.Log(Prefix + "Actor microphone bound to the offered send/receive audio transceiver.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(Prefix + "Failed to bind the Actor audio transceiver: " + exception);
             return false;
         }
     }
@@ -493,7 +608,10 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         audioPeerConnection.OnTrack = trackEvent =>
         {
             if (trackEvent.Track is AudioStreamTrack audioTrack)
+            {
+                audioTransceiver = trackEvent.Transceiver;
                 AttachRemoteTrack(audioTrack);
+            }
         };
 
         audioPeerConnection.OnIceConnectionChange = state =>
@@ -506,10 +624,10 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
             if (iceConnected)
             {
                 SetState(
-                    remoteAudioTrack != null ? SessionState.Connected : SessionState.Connecting,
-                    remoteAudioTrack != null
-                        ? "ICE connected and remote audio track is playing."
-                        : "ICE connected; waiting for the remote audio track."
+                    remoteAudioSamplesReceived ? SessionState.Connected : SessionState.Connecting,
+                    remoteAudioSamplesReceived
+                        ? "ICE connected and decoded remote audio samples are playing."
+                        : "ICE connected; waiting for decoded remote audio samples."
                 );
             }
             else if (state == RTCIceConnectionState.Failed)
@@ -533,9 +651,18 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
             return;
 
         if (remoteAudioTrack != null && remoteAudioTrack != audioTrack)
+        {
+            remoteAudioTrack.onReceived -= OnRemoteAudioReceived;
             remoteAudioTrack.Dispose();
+        }
 
         remoteAudioTrack = audioTrack;
+        remoteAudioSamplesReceived = false;
+        Interlocked.Exchange(ref remoteAudioCallbackPending, 0);
+        Interlocked.Exchange(ref remoteAudioCallbackCount, 0);
+        Interlocked.Exchange(ref remoteAudioSampleCount, 0);
+        remoteAudioTrack.onReceived -= OnRemoteAudioReceived;
+        remoteAudioTrack.onReceived += OnRemoteAudioReceived;
         EnsureAudioObjects();
 
         remotePlaybackAudioSource.SetTrack(remoteAudioTrack);
@@ -548,11 +675,21 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         }
 
         SetState(
-            iceConnected ? SessionState.Connected : SessionState.Connecting,
+            SessionState.Connecting,
             iceConnected
-                ? "Remote audio track received and playing."
-                : "Remote audio track received; waiting for ICE connection."
+                ? "Remote audio track received; waiting for decoded audio samples."
+                : "Remote audio track received; waiting for ICE connection and decoded samples."
         );
+    }
+
+    private void OnRemoteAudioReceived(float[] data, int channels, int sampleRate)
+    {
+        if (data == null || data.Length == 0 || channels <= 0 || sampleRate <= 0)
+            return;
+
+        Interlocked.Increment(ref remoteAudioCallbackCount);
+        Interlocked.Add(ref remoteAudioSampleCount, data.Length);
+        Interlocked.Exchange(ref remoteAudioCallbackPending, 1);
     }
 
     private void OnSignalReceived(PlayerRef from, string type, string payload)
@@ -816,7 +953,14 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
     {
         remoteDescriptionSet = false;
         iceConnected = false;
+        remoteAudioSamplesReceived = false;
         pendingRemoteCandidates.Clear();
+        Interlocked.Exchange(ref remoteAudioCallbackPending, 0);
+        Interlocked.Exchange(ref remoteAudioCallbackCount, 0);
+        Interlocked.Exchange(ref remoteAudioSampleCount, 0);
+
+        if (remoteAudioTrack != null)
+            remoteAudioTrack.onReceived -= OnRemoteAudioReceived;
 
         if (remotePlaybackAudioSource != null)
         {
@@ -826,16 +970,13 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
 
         if (audioPeerConnection != null)
         {
-            if (localAudioSender != null)
-            {
-                audioPeerConnection.RemoveTrack(localAudioSender);
-                localAudioSender = null;
-            }
-
             audioPeerConnection.Close();
             audioPeerConnection.Dispose();
             audioPeerConnection = null;
         }
+
+        localAudioSender = null;
+        audioTransceiver = null;
 
         if (remoteAudioTrack != null)
         {
@@ -918,6 +1059,7 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         remotePlaybackAudioSource.spatialBlend = 0f;
         remotePlaybackAudioSource.volume = 1f;
         remotePlaybackAudioSource.mute = false;
+        remotePlaybackAudioSource.priority = 0;
         remotePlaybackAudioSource.ignoreListenerPause = true;
     }
 

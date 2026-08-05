@@ -957,6 +957,9 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     public void OnStartAudioClicked()
     {
+        SetAudioStatus("Start requested. Preparing both microphones...");
+        Debug.Log("PerformerWebcamControlPanel: Start Audio clicked.");
+
         TryFindControlHub();
         TryFindActorAudioEndpoint();
 

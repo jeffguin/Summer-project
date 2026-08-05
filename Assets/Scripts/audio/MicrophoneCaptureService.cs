@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Threading;
 using Unity.WebRTC;
 using UnityEngine;
 
@@ -31,12 +32,12 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     private int clipLengthSeconds = 1;
 
     /*
-     * ²»ÄÜ°Ñ SerializeField ×Ö¶Î·Å½ø£º
+     * ä¸èƒ½æŠŠ SerializeField å­—æ®µæ”¾è¿›ï¼š
      *
      * #if UNITY_ANDROID && !UNITY_EDITOR
      *
-     * ·ñÔò Editor ºÍ Android Player ¿´µ½µÄĞòÁĞ»¯×Ö¶Î²¼¾Ö²»Í¬£¬
-     * »áµ¼ÖÂ£º
+     * å¦åˆ™ Editor å’Œ Android Player çœ‹åˆ°çš„åºåˆ—åŒ–å­—æ®µå¸ƒå±€ä¸åŒï¼Œ
+     * ä¼šå¯¼è‡´ï¼š
      *
      * Script class layout is incompatible between the editor and the player.
      */
@@ -53,6 +54,7 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
 
     private bool microphoneStarted;
     private AudioClip microphoneClip;
+    private int audioCallbackCount;
 
     public AudioStreamTrack Track { get; private set; }
 
@@ -62,13 +64,20 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
 
     public string SelectedDeviceName => selectedDeviceName;
 
+    /// <summary>
+    /// Number of Unity DSP callbacks produced by the microphone AudioSource in
+    /// the current capture session. A running Microphone alone is not enough:
+    /// AudioStreamTrack receives data from this DSP callback.
+    /// </summary>
+    public int AudioCallbackCount => Volatile.Read(ref audioCallbackCount);
+
     private void Awake()
     {
         EnsureAudioSource();
     }
 
     /// <summary>
-    /// »ñÈ¡µ±Ç°Æ½Ì¨¿ÉÓÃµÄÂó¿Ë·çÉè±¸¡£
+    /// è·å–å½“å‰å¹³å°å¯ç”¨çš„éº¦å…‹é£è®¾å¤‡ã€‚
     /// </summary>
     public string[] GetDevices()
     {
@@ -80,8 +89,8 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     }
 
     /// <summary>
-    /// ÉèÖÃÒªÊ¹ÓÃµÄÂó¿Ë·çÉè±¸¡£
-    /// ´«Èë¿Õ×Ö·û´®±íÊ¾Ê¹ÓÃÏµÍ³Ä¬ÈÏÂó¿Ë·ç¡£
+    /// è®¾ç½®è¦ä½¿ç”¨çš„éº¦å…‹é£è®¾å¤‡ã€‚
+    /// ä¼ å…¥ç©ºå­—ç¬¦ä¸²è¡¨ç¤ºä½¿ç”¨ç³»ç»Ÿé»˜è®¤éº¦å…‹é£ã€‚
     /// </summary>
     public bool SetSelectedDevice(
         string deviceName,
@@ -122,13 +131,14 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     }
 
     /// <summary>
-    /// Æô¶¯Âó¿Ë·ç²É¼¯£¬²¢´´½¨ WebRTC AudioStreamTrack¡£
+    /// å¯åŠ¨éº¦å…‹é£é‡‡é›†ï¼Œå¹¶åˆ›å»º WebRTC AudioStreamTrackã€‚
     /// </summary>
     public IEnumerator StartCapture(
         Action<CaptureResult> completed)
     {
         StopCapture();
         EnsureAudioSource();
+        Interlocked.Exchange(ref audioCallbackCount, 0);
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (!Permission.HasUserAuthorizedPermission(
@@ -202,11 +212,11 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
         }
 
         /*
-         * ÔÚ Microphone.Start ÖĞ´«Èë null£¬
-         * ±íÊ¾Ê¹ÓÃµ±Ç°Æ½Ì¨µÄÄ¬ÈÏÂó¿Ë·ç¡£
+         * åœ¨ Microphone.Start ä¸­ä¼ å…¥ nullï¼Œ
+         * è¡¨ç¤ºä½¿ç”¨å½“å‰å¹³å°çš„é»˜è®¤éº¦å…‹é£ã€‚
          *
-         * Android/Quest ÓĞÊ±²»»á·µ»ØÃ÷È·µÄÉè±¸Ãû³Æ£¬
-         * µ«Ä¬ÈÏÊäÈëÉè±¸ÈÔÈ»¿ÉÒÔÕı³£¹¤×÷¡£
+         * Android/Quest æœ‰æ—¶ä¸ä¼šè¿”å›æ˜ç¡®çš„è®¾å¤‡åç§°ï¼Œ
+         * ä½†é»˜è®¤è¾“å…¥è®¾å¤‡ä»ç„¶å¯ä»¥æ­£å¸¸å·¥ä½œã€‚
          */
         activeDeviceName =
             string.IsNullOrEmpty(selectedDeviceName)
@@ -292,6 +302,43 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
             yield break;
         }
 
+        /*
+         * AudioStreamTrack(AudioSource) is fed from Unity's audio thread via
+         * OnAudioFilterRead. Microphone.GetPosition > 0 only proves that the
+         * OS microphone is recording; it does not prove that Unity's DSP graph
+         * is delivering those samples to WebRTC. Wait for at least one DSP
+         * callback so a session cannot report success while sending silence.
+         */
+        float dspDeadline =
+            Time.realtimeSinceStartup +
+            Mathf.Max(0.1f, captureStartTimeoutSeconds);
+
+        while (AudioCallbackCount <= 0 &&
+               Time.realtimeSinceStartup < dspDeadline)
+        {
+            yield return null;
+        }
+
+        if (AudioCallbackCount <= 0)
+        {
+            StopCapture();
+
+            Complete(
+                completed,
+                false,
+                "AudioDspNotRunning",
+                "The microphone is recording, but Unity did not deliver audio DSP samples to WebRTC.");
+
+            yield break;
+        }
+
+        Debug.Log(
+            "MicrophoneCaptureService: Capture ready. Device = " +
+            (string.IsNullOrEmpty(activeDeviceName) ? "Default" : activeDeviceName) +
+            ", Clip = " + microphoneClip.frequency + " Hz / " + microphoneClip.channels +
+            " channel(s), Output = " + AudioSettings.outputSampleRate + " Hz."
+        );
+
         Complete(
             completed,
             true,
@@ -300,7 +347,7 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     }
 
     /// <summary>
-    /// Í£Ö¹Âó¿Ë·ç²É¼¯²¢ÊÍ·Å WebRTC ÒôÆµ¹ìµÀ¡£
+    /// åœæ­¢éº¦å…‹é£é‡‡é›†å¹¶é‡Šæ”¾ WebRTC éŸ³é¢‘è½¨é“ã€‚
     /// </summary>
     public void StopCapture()
     {
@@ -334,10 +381,11 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
         microphoneStarted = false;
         activeDeviceName = null;
         microphoneClip = null;
+        Interlocked.Exchange(ref audioCallbackCount, 0);
     }
 
     /// <summary>
-    /// È·±£µ±Ç°¶ÔÏóÉÏ´æÔÚÓÃÓÚ²É¼¯µÄ AudioSource¡£
+    /// ç¡®ä¿å½“å‰å¯¹è±¡ä¸Šå­˜åœ¨ç”¨äºé‡‡é›†çš„ AudioSourceã€‚
     /// </summary>
     private void EnsureAudioSource()
     {
@@ -357,6 +405,15 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
         captureAudioSource.spatialBlend = 0f;
         captureAudioSource.volume = 1f;
         captureAudioSource.mute = false;
+        captureAudioSource.priority = 0;
+        captureAudioSource.ignoreListenerPause = true;
+    }
+
+    // Called on Unity's audio thread. Do not access main-thread-only Unity APIs here.
+    private void OnAudioFilterRead(float[] data, int channels)
+    {
+        if (microphoneStarted && data != null && data.Length > 0 && channels > 0)
+            Interlocked.Increment(ref audioCallbackCount);
     }
 
     private static void Complete(
