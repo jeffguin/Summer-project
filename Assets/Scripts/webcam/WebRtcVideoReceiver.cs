@@ -34,6 +34,7 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
     [Header("Timeouts")]
     [SerializeField] private float connectionTimeoutSeconds = 20f;
     [SerializeField] private float remoteFrameTimeoutSeconds = 5f;
+    [SerializeField] private float remoteFrameStatsPollSeconds = 1f;
     [SerializeField] private float disconnectedGraceSeconds = 3f;
     [SerializeField] private float stopAckTimeoutSeconds = 2f;
 
@@ -41,6 +42,7 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
     private Coroutine signalHubCoroutine;
     private Coroutine operationCoroutine;
     private Coroutine connectionTimeoutCoroutine;
+    private Coroutine remoteFrameHealthCoroutine;
     private Coroutine disconnectedCoroutine;
     private Coroutine stopAckCoroutine;
 
@@ -87,6 +89,8 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         public OnVideoReceived videoHandler;
         public Texture texture;
         public float lastFrameTime;
+        public ulong lastFrameCount;
+        public bool hasFrameStats;
         public bool firstFrameReceived;
     }
 
@@ -113,30 +117,6 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
         if (signalHubCoroutine == null)
             signalHubCoroutine = StartCoroutine(WaitForSignalHub());
-    }
-
-    private void Update()
-    {
-        if (State != SessionState.Connected)
-            return;
-
-        float now = Time.realtimeSinceStartup;
-        foreach (RemoteVideoStream stream in remoteStreams.Values)
-        {
-            if (!stream.firstFrameReceived || stream.lastFrameTime <= 0f)
-                continue;
-
-            if (now - stream.lastFrameTime > Mathf.Max(1f, remoteFrameTimeoutSeconds))
-            {
-                Fail(
-                    "RemoteFrameTimeout",
-                    "Camera '" + stream.descriptor.deviceName +
-                    "' stopped delivering video frames.",
-                    true
-                );
-                return;
-            }
-        }
     }
 
     private void OnDisplayScreenRegistryChanged()
@@ -599,6 +579,9 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         if (stream == null || texture == null || texture.width <= 0 || texture.height <= 0)
             return;
 
+        // Unity WebRTC invokes OnVideoReceived when the receive texture is created
+        // (normally the first frame), not once for every decoded frame. Frame health
+        // is therefore monitored separately through inbound RTP statistics.
         stream.lastFrameTime = Time.realtimeSinceStartup;
         bool textureChanged = stream.texture != texture;
         stream.texture = texture;
@@ -640,6 +623,163 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
         if (State != SessionState.Connected)
             SetState(SessionState.Connected, "ICE connected and the first remote video frame is visible.");
+
+        StartRemoteFrameHealthMonitor(activeSessionId);
+    }
+
+    private void StartRemoteFrameHealthMonitor(string sessionId)
+    {
+        CancelRemoteFrameHealthMonitor();
+        remoteFrameHealthCoroutine = StartCoroutine(RemoteFrameHealthRoutine(sessionId));
+    }
+
+    private IEnumerator RemoteFrameHealthRoutine(string sessionId)
+    {
+        WaitForSecondsRealtime pollDelay =
+            new WaitForSecondsRealtime(Mathf.Max(0.25f, remoteFrameStatsPollSeconds));
+
+        while (sessionId == activeSessionId && !string.IsNullOrEmpty(sessionId))
+        {
+            yield return pollDelay;
+
+            if (sessionId != activeSessionId ||
+                State != SessionState.Connected ||
+                peerConnection == null)
+            {
+                continue;
+            }
+
+            RTCPeerConnection monitoredPeer = peerConnection;
+            RTCStatsReportAsyncOperation statsOperation;
+
+            try
+            {
+                statsOperation = monitoredPeer.GetStats();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    "WebRtcVideoReceiver: Could not request inbound video statistics: " +
+                    exception.Message
+                );
+                continue;
+            }
+
+            yield return statsOperation;
+
+            if (sessionId != activeSessionId || monitoredPeer != peerConnection)
+            {
+                if (!statsOperation.IsError && statsOperation.Value != null)
+                    statsOperation.Value.Dispose();
+                continue;
+            }
+
+            if (statsOperation.IsError)
+            {
+                Debug.LogWarning(
+                    "WebRtcVideoReceiver: Could not read inbound video statistics: " +
+                    statsOperation.Error.message
+                );
+                continue;
+            }
+
+            RTCStatsReport report = statsOperation.Value;
+            Dictionary<string, ulong> frameCountsByTrack = new Dictionary<string, ulong>();
+
+            try
+            {
+                foreach (RTCStats stats in report.Stats.Values)
+                {
+                    if (!(stats is RTCInboundRTPStreamStats inbound) ||
+                        !string.Equals(inbound.kind, "video", StringComparison.OrdinalIgnoreCase) ||
+                        string.IsNullOrEmpty(inbound.trackIdentifier))
+                    {
+                        continue;
+                    }
+
+                    ulong frameCount = inbound.framesDecoded > 0
+                        ? inbound.framesDecoded
+                        : inbound.framesReceived;
+                    if (frameCountsByTrack.TryGetValue(
+                            inbound.trackIdentifier,
+                            out ulong existingCount))
+                    {
+                        frameCountsByTrack[inbound.trackIdentifier] = existingCount + frameCount;
+                    }
+                    else
+                    {
+                        frameCountsByTrack.Add(inbound.trackIdentifier, frameCount);
+                    }
+                }
+            }
+            finally
+            {
+                report.Dispose();
+            }
+
+            float now = Time.realtimeSinceStartup;
+            foreach (RemoteVideoStream stream in remoteStreams.Values)
+            {
+                if (!stream.firstFrameReceived || stream.track == null)
+                    continue;
+
+                ulong frameCount = 0;
+                string trackId = stream.track.Id;
+                bool hasCount =
+                    !string.IsNullOrEmpty(trackId) &&
+                    frameCountsByTrack.TryGetValue(trackId, out frameCount);
+
+                if (!hasCount &&
+                    stream.descriptor != null &&
+                    !string.IsNullOrEmpty(stream.descriptor.trackId))
+                {
+                    hasCount = frameCountsByTrack.TryGetValue(
+                        stream.descriptor.trackId,
+                        out frameCount
+                    );
+                }
+
+                // Some platforms do not expose trackIdentifier in inbound stats.
+                // In that case ICE/PeerConnection state remains the authoritative
+                // failure signal instead of applying another unreliable timeout.
+                if (!hasCount || frameCount == 0)
+                    continue;
+
+                if (!stream.hasFrameStats || stream.lastFrameCount != frameCount)
+                {
+                    stream.hasFrameStats = true;
+                    stream.lastFrameCount = frameCount;
+                    stream.lastFrameTime = now;
+                    continue;
+                }
+
+                if (now - stream.lastFrameTime <= Mathf.Max(1f, remoteFrameTimeoutSeconds))
+                    continue;
+
+                string cameraName = stream.descriptor != null
+                    ? stream.descriptor.deviceName
+                    : "Unknown camera";
+
+                remoteFrameHealthCoroutine = null;
+                Fail(
+                    "RemoteFrameTimeout",
+                    "Camera '" + cameraName + "' stopped delivering decoded video frames.",
+                    true
+                );
+                yield break;
+            }
+        }
+
+        remoteFrameHealthCoroutine = null;
+    }
+
+    private void CancelRemoteFrameHealthMonitor()
+    {
+        if (remoteFrameHealthCoroutine == null)
+            return;
+
+        StopCoroutine(remoteFrameHealthCoroutine);
+        remoteFrameHealthCoroutine = null;
     }
 
     public void SetScreenStream(VideoDisplayScreen screen, string streamId)
@@ -903,6 +1043,7 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
 
         operationCoroutine = null;
         CancelConnectionTimeout();
+        CancelRemoteFrameHealthMonitor();
         CancelDisconnectedGracePeriod();
         CancelStopAckTimeout();
         ReleaseMediaResources();
@@ -923,6 +1064,7 @@ public sealed class WebRtcVideoReceiver : MonoBehaviour
         }
 
         CancelConnectionTimeout();
+        CancelRemoteFrameHealthMonitor();
         CancelDisconnectedGracePeriod();
         CancelStopAckTimeout();
         ReleaseMediaResources();
