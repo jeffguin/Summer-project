@@ -5,10 +5,11 @@ public class ArduinoController : MonoBehaviour
 {
     SerialPort serial = new SerialPort("COM4", 9600);
 
-    [SerializeField] private GameObject sweetPrefab;
+    [SerializeField] private GameObject Item_Into_Virtual;
     [SerializeField] private Transform spawnPoint;
 
-    bool canRotate = true;
+    private bool canRotate = true;
+
     void Start()
     {
         serial.Open();
@@ -17,8 +18,11 @@ public class ArduinoController : MonoBehaviour
 
     void Update()
     {
+
         // Unity > Arduino
 
+
+        // Press Q to simulate Arduino button
         if (Input.GetKeyDown(KeyCode.Q))
         {
             ArduinoButtonPressed();
@@ -51,8 +55,7 @@ public class ArduinoController : MonoBehaviour
                 {
                     ArduinoButtonPressed();
                 }
-
-                else if(message == "ROTATE_COMPLETE")
+                else if (message == "ROTATE_COMPLETE")
                 {
                     canRotate = true;
                 }
@@ -66,23 +69,32 @@ public class ArduinoController : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
+        // Trigger when any object tagged "Sweet" enters the trigger
         if (other.CompareTag("Sweet"))
         {
-            serial.Write("2");
+            if (serial.IsOpen)
+            {
+                serial.Write("2");
+            }
+
             Destroy(other.gameObject);
         }
     }
 
     void ArduinoButtonPressed()
     {
-        if(canRotate)
-        {
-            Debug.Log("Arduino button pressed!");
+        if (!canRotate)
+            return;
 
-            Instantiate(sweetPrefab, spawnPoint.position, sweetPrefab.transform.rotation);
+        Debug.Log("Arduino button pressed!");
 
-            canRotate = false;
-        }   
+        Instantiate(
+            Item_Into_Virtual,
+            spawnPoint.position,
+            Item_Into_Virtual.transform.rotation
+        );
+
+        canRotate = false;
     }
 
     void OnApplicationQuit()
