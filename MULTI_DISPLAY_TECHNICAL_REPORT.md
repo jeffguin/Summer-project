@@ -13,6 +13,7 @@
 - 如果现场只有两块显示设备，自动回退到 Display 0 和 Display 1。
 - 当实际显示器不足时，禁用没有输出目标的 Portal Camera，并输出明确错误日志。
 - 启用 `PhysicalScreen RIGHT` 与 `PortalCamera RIGHT`，使第二个窗口参与视锥计算和画面输出。
+- 当右侧物理屏幕在场景中被替换后，将 `PortalCamera RIGHT` 的 `screen` 引用重新绑定到新的 `PhysicalScreen RIGHT`。
 
 ## 场景默认配置
 
