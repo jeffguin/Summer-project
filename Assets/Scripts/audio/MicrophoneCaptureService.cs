@@ -52,9 +52,17 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     private string selectedDeviceName = string.Empty;
     private string activeDeviceName;
 
-    private bool microphoneStarted;
+    private volatile bool microphoneStarted;
     private AudioClip microphoneClip;
     private int audioCallbackCount;
+    private int captureOutputSampleRate;
+    private int inputSignalPending;
+    private int inputSignalDetected;
+    private volatile float latestInputPeak;
+    private string audioThreadError;
+    private readonly object trackSync = new object();
+    private float captureStartedAt;
+    private bool inputSilenceWarningLogged;
 
     public AudioStreamTrack Track { get; private set; }
 
@@ -71,9 +79,44 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     /// </summary>
     public int AudioCallbackCount => Volatile.Read(ref audioCallbackCount);
 
+    public bool HasInputSignal => Volatile.Read(ref inputSignalDetected) != 0;
+
+    public float LatestInputPeak => latestInputPeak;
+
     private void Awake()
     {
         EnsureAudioSource();
+    }
+
+    private void Update()
+    {
+        string error = Interlocked.Exchange(ref audioThreadError, null);
+        if (!string.IsNullOrEmpty(error))
+        {
+            Debug.LogError(
+                "MicrophoneCaptureService: Failed to send PCM to WebRTC on the audio thread. " +
+                error);
+        }
+
+        if (Interlocked.Exchange(ref inputSignalPending, 0) != 0)
+        {
+            Debug.Log(
+                "MicrophoneCaptureService: Non-silent microphone PCM detected. Peak = " +
+                LatestInputPeak.ToString("F6") + ".");
+        }
+
+        if (microphoneStarted &&
+            AudioCallbackCount > 0 &&
+            !HasInputSignal &&
+            !inputSilenceWarningLogged &&
+            Time.realtimeSinceStartup - captureStartedAt >= 3f)
+        {
+            inputSilenceWarningLogged = true;
+            Debug.LogWarning(
+                "MicrophoneCaptureService: Unity is receiving microphone callbacks, " +
+                "but every captured PCM sample is digital silence. Check the selected " +
+                "input device, OS input level, and microphone permission.");
+        }
     }
 
     /// <summary>
@@ -139,6 +182,12 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
         StopCapture();
         EnsureAudioSource();
         Interlocked.Exchange(ref audioCallbackCount, 0);
+        Interlocked.Exchange(ref inputSignalPending, 0);
+        Interlocked.Exchange(ref inputSignalDetected, 0);
+        latestInputPeak = 0f;
+        captureStartedAt = 0f;
+        inputSilenceWarningLogged = false;
+        Interlocked.Exchange(ref audioThreadError, null);
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (!Permission.HasUserAuthorizedPermission(
@@ -280,14 +329,22 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
 
         captureAudioSource.clip = microphoneClip;
         captureAudioSource.loop = true;
-        captureAudioSource.Play();
+        captureOutputSampleRate = Mathf.Max(8000, AudioSettings.outputSampleRate);
 
         try
         {
-            Track = new AudioStreamTrack(captureAudioSource)
+            /*
+             * Feed PCM explicitly from OnAudioFilterRead instead of using the
+             * AudioStreamTrack(AudioSource) constructor. That constructor adds
+             * a hidden AudioCustomFilter whose execution order relative to our
+             * own filter cannot be verified across platforms. Explicit SetData
+             * makes the exact samples sent to WebRTC observable and identical
+             * on Windows and Quest.
+             */
+            lock (trackSync)
             {
-                Loopback = false
-            };
+                Track = new AudioStreamTrack();
+            }
         }
         catch (Exception exception)
         {
@@ -302,12 +359,15 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
             yield break;
         }
 
+        captureAudioSource.Play();
+        captureStartedAt = Time.realtimeSinceStartup;
+
         /*
-         * AudioStreamTrack(AudioSource) is fed from Unity's audio thread via
-         * OnAudioFilterRead. Microphone.GetPosition > 0 only proves that the
-         * OS microphone is recording; it does not prove that Unity's DSP graph
-         * is delivering those samples to WebRTC. Wait for at least one DSP
-         * callback so a session cannot report success while sending silence.
+         * The AudioStreamTrack is fed explicitly from Unity's audio thread via
+         * OnAudioFilterRead. Microphone.GetPosition > 0 only proves that the OS
+         * microphone is recording; it does not prove that Unity's DSP graph is
+         * delivering those samples to WebRTC. Wait for a successful SetData
+         * callback before reporting that the capture path is ready.
          */
         float dspDeadline =
             Time.realtimeSinceStartup +
@@ -336,7 +396,7 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
             "MicrophoneCaptureService: Capture ready. Device = " +
             (string.IsNullOrEmpty(activeDeviceName) ? "Default" : activeDeviceName) +
             ", Clip = " + microphoneClip.frequency + " Hz / " + microphoneClip.channels +
-            " channel(s), Output = " + AudioSettings.outputSampleRate + " Hz."
+            " channel(s), WebRTC input = " + captureOutputSampleRate + " Hz."
         );
 
         Complete(
@@ -351,11 +411,8 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
     /// </summary>
     public void StopCapture()
     {
-        if (Track != null)
-        {
-            Track.Dispose();
-            Track = null;
-        }
+        bool wasMicrophoneStarted = microphoneStarted;
+        microphoneStarted = false;
 
         if (captureAudioSource != null)
         {
@@ -363,7 +420,16 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
             captureAudioSource.clip = null;
         }
 
-        if (microphoneStarted)
+        lock (trackSync)
+        {
+            if (Track != null)
+            {
+                Track.Dispose();
+                Track = null;
+            }
+        }
+
+        if (wasMicrophoneStarted)
         {
             try
             {
@@ -378,10 +444,16 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
             }
         }
 
-        microphoneStarted = false;
         activeDeviceName = null;
         microphoneClip = null;
+        captureOutputSampleRate = 0;
         Interlocked.Exchange(ref audioCallbackCount, 0);
+        Interlocked.Exchange(ref inputSignalPending, 0);
+        Interlocked.Exchange(ref inputSignalDetected, 0);
+        latestInputPeak = 0f;
+        captureStartedAt = 0f;
+        inputSilenceWarningLogged = false;
+        Interlocked.Exchange(ref audioThreadError, null);
     }
 
     /// <summary>
@@ -407,13 +479,62 @@ public sealed class MicrophoneCaptureService : MonoBehaviour
         captureAudioSource.mute = false;
         captureAudioSource.priority = 0;
         captureAudioSource.ignoreListenerPause = true;
+        captureAudioSource.spatialize = false;
+        captureAudioSource.dopplerLevel = 0f;
+        captureAudioSource.panStereo = 0f;
+        captureAudioSource.pitch = 1f;
     }
 
     // Called on Unity's audio thread. Do not access main-thread-only Unity APIs here.
     private void OnAudioFilterRead(float[] data, int channels)
     {
-        if (microphoneStarted && data != null && data.Length > 0 && channels > 0)
-            Interlocked.Increment(ref audioCallbackCount);
+        if (!microphoneStarted ||
+            data == null ||
+            data.Length == 0 ||
+            channels <= 0 ||
+            captureOutputSampleRate <= 0)
+        {
+            return;
+        }
+
+        float peak = 0f;
+        for (int index = 0; index < data.Length; index++)
+        {
+            float absolute = Math.Abs(data[index]);
+            if (absolute > peak)
+                peak = absolute;
+        }
+
+        latestInputPeak = peak;
+        if (peak > 0.00001f &&
+            Interlocked.CompareExchange(ref inputSignalDetected, 1, 0) == 0)
+        {
+            Interlocked.Exchange(ref inputSignalPending, 1);
+        }
+
+        try
+        {
+            lock (trackSync)
+            {
+                if (microphoneStarted && Track != null)
+                {
+                    Track.SetData(data, channels, captureOutputSampleRate);
+                    Interlocked.Increment(ref audioCallbackCount);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Interlocked.CompareExchange(
+                ref audioThreadError,
+                exception.Message,
+                null);
+        }
+        finally
+        {
+            // Prevent local microphone loopback and acoustic feedback.
+            Array.Clear(data, 0, data.Length);
+        }
     }
 
     private static void Complete(

@@ -68,9 +68,17 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
     private bool remoteDescriptionSet;
     private bool iceConnected;
     private bool remoteAudioSamplesReceived;
+    private bool remoteAudioSignalReceived;
+    private bool remoteSilenceWarningLogged;
     private int remoteAudioCallbackPending;
+    private int remoteAudioSignalPending;
     private long remoteAudioCallbackCount;
     private long remoteAudioSampleCount;
+    private volatile float remoteAudioPeak;
+    private float remoteTrackAttachedAt;
+    private AudioListener fallbackAudioListener;
+    private bool fallbackAudioListenerReportedActive;
+    private float nextAudioListenerCheckAt;
     private string activeSessionId = "";
 
     private readonly Queue<IceSignal> pendingRemoteCandidates = new Queue<IceSignal>();
@@ -126,30 +134,72 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
 
     private void Update()
     {
+        if ((remoteAudioTrack != null || fallbackAudioListener != null) &&
+            Time.realtimeSinceStartup >= nextAudioListenerCheckAt)
+        {
+            nextAudioListenerCheckAt = Time.realtimeSinceStartup + 1f;
+            EnsurePlaybackAudioListener();
+        }
+
         // AudioStreamTrack.onReceived runs on a worker/audio thread. Marshal
         // the state transition back to Unity's main thread.
-        if (Interlocked.Exchange(ref remoteAudioCallbackPending, 0) == 0 ||
-            remoteAudioTrack == null ||
-            string.IsNullOrEmpty(activeSessionId) ||
-            remoteAudioSamplesReceived)
+        if (remoteAudioTrack == null || string.IsNullOrEmpty(activeSessionId))
         {
             return;
         }
 
-        remoteAudioSamplesReceived = true;
+        if (Interlocked.Exchange(ref remoteAudioCallbackPending, 0) != 0 &&
+            !remoteAudioSamplesReceived)
+        {
+            remoteAudioSamplesReceived = true;
 
-        Debug.Log(
-            Prefix + "Decoded remote audio samples received. Callbacks = " +
-            Interlocked.Read(ref remoteAudioCallbackCount) +
-            ", Samples = " + Interlocked.Read(ref remoteAudioSampleCount) + "."
-        );
+            Debug.Log(
+                Prefix + "Remote PCM callbacks started. Callbacks = " +
+                Interlocked.Read(ref remoteAudioCallbackCount) +
+                ", Samples = " + Interlocked.Read(ref remoteAudioSampleCount) + "."
+            );
 
-        SetState(
-            iceConnected ? SessionState.Connected : SessionState.Connecting,
-            iceConnected
-                ? "ICE connected and decoded remote audio samples are playing."
-                : "Decoded remote audio samples received; waiting for ICE connection."
-        );
+            SetState(
+                iceConnected ? SessionState.Connected : SessionState.Connecting,
+                iceConnected
+                    ? "ICE connected and the remote PCM playback pipeline is running."
+                    : "Remote PCM callbacks started; waiting for ICE connection."
+            );
+        }
+
+        if (Interlocked.Exchange(ref remoteAudioSignalPending, 0) != 0 &&
+            !remoteAudioSignalReceived)
+        {
+            remoteAudioSignalReceived = true;
+
+            Debug.Log(
+                Prefix + "Non-silent remote audio detected. Peak = " +
+                remoteAudioPeak.ToString("F6") + "."
+            );
+
+            SetState(
+                iceConnected ? SessionState.Connected : SessionState.Connecting,
+                "Non-silent remote voice is reaching the playback AudioSource."
+            );
+        }
+
+        if (remoteAudioSamplesReceived &&
+            !remoteAudioSignalReceived &&
+            !remoteSilenceWarningLogged &&
+            Time.realtimeSinceStartup - remoteTrackAttachedAt >= 3f)
+        {
+            remoteSilenceWarningLogged = true;
+            Debug.LogWarning(
+                Prefix +
+                "The remote PCM pipeline is running, but every received sample is digital silence. " +
+                "Check the remote microphone capture path."
+            );
+
+            SetState(
+                iceConnected ? SessionState.Connected : SessionState.Connecting,
+                "Remote audio is connected, but the received PCM is silent."
+            );
+        }
     }
 
     private void OnEnable()
@@ -658,7 +708,12 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
 
         remoteAudioTrack = audioTrack;
         remoteAudioSamplesReceived = false;
+        remoteAudioSignalReceived = false;
+        remoteSilenceWarningLogged = false;
+        remoteAudioPeak = 0f;
+        remoteTrackAttachedAt = Time.realtimeSinceStartup;
         Interlocked.Exchange(ref remoteAudioCallbackPending, 0);
+        Interlocked.Exchange(ref remoteAudioSignalPending, 0);
         Interlocked.Exchange(ref remoteAudioCallbackCount, 0);
         Interlocked.Exchange(ref remoteAudioSampleCount, 0);
         remoteAudioTrack.onReceived -= OnRemoteAudioReceived;
@@ -668,11 +723,7 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         remotePlaybackAudioSource.SetTrack(remoteAudioTrack);
         remotePlaybackAudioSource.loop = true;
         remotePlaybackAudioSource.Play();
-
-        if (FindFirstObjectByType<AudioListener>() == null)
-        {
-            Debug.LogError(Prefix + "No active AudioListener exists. Remote voice cannot be heard.");
-        }
+        EnsurePlaybackAudioListener();
 
         SetState(
             SessionState.Connecting,
@@ -686,6 +737,20 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
     {
         if (data == null || data.Length == 0 || channels <= 0 || sampleRate <= 0)
             return;
+
+        float peak = 0f;
+        for (int index = 0; index < data.Length; index++)
+        {
+            float absolute = Math.Abs(data[index]);
+            if (absolute > peak)
+                peak = absolute;
+        }
+
+        if (peak > remoteAudioPeak)
+            remoteAudioPeak = peak;
+
+        if (peak > 0.00001f)
+            Interlocked.Exchange(ref remoteAudioSignalPending, 1);
 
         Interlocked.Increment(ref remoteAudioCallbackCount);
         Interlocked.Add(ref remoteAudioSampleCount, data.Length);
@@ -954,8 +1019,13 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         remoteDescriptionSet = false;
         iceConnected = false;
         remoteAudioSamplesReceived = false;
+        remoteAudioSignalReceived = false;
+        remoteSilenceWarningLogged = false;
+        remoteAudioPeak = 0f;
+        remoteTrackAttachedAt = 0f;
         pendingRemoteCandidates.Clear();
         Interlocked.Exchange(ref remoteAudioCallbackPending, 0);
+        Interlocked.Exchange(ref remoteAudioSignalPending, 0);
         Interlocked.Exchange(ref remoteAudioCallbackCount, 0);
         Interlocked.Exchange(ref remoteAudioSampleCount, 0);
 
@@ -1061,6 +1131,74 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         remotePlaybackAudioSource.mute = false;
         remotePlaybackAudioSource.priority = 0;
         remotePlaybackAudioSource.ignoreListenerPause = true;
+        remotePlaybackAudioSource.spatialize = false;
+        remotePlaybackAudioSource.dopplerLevel = 0f;
+        remotePlaybackAudioSource.panStereo = 0f;
+        remotePlaybackAudioSource.pitch = 1f;
+    }
+
+    /// <summary>
+    /// Keeps exactly one usable listener available for 2D WebRTC voice.
+    /// Some audience/VR camera objects are enabled and disabled at runtime,
+    /// so a listener that is enabled in the scene asset can still disappear
+    /// from the active hierarchy while a call is running.
+    /// </summary>
+    private void EnsurePlaybackAudioListener()
+    {
+        if (remotePlaybackAudioSource == null)
+            return;
+
+        bool anotherActiveListenerExists = false;
+        AudioListener[] listeners = FindObjectsByType<AudioListener>(
+            FindObjectsInactive.Exclude,
+            FindObjectsSortMode.None);
+
+        foreach (AudioListener listener in listeners)
+        {
+            if (listener != null &&
+                listener != fallbackAudioListener &&
+                listener.enabled &&
+                listener.gameObject.activeInHierarchy)
+            {
+                anotherActiveListenerExists = true;
+                break;
+            }
+        }
+
+        if (anotherActiveListenerExists)
+        {
+            if (fallbackAudioListener != null && fallbackAudioListener.enabled)
+            {
+                fallbackAudioListener.enabled = false;
+                Debug.Log(Prefix + "A scene AudioListener became active; disabled the voice fallback listener.");
+            }
+
+            fallbackAudioListenerReportedActive = false;
+            return;
+        }
+
+        if (fallbackAudioListener == null)
+        {
+            fallbackAudioListener =
+                remotePlaybackAudioSource.GetComponent<AudioListener>();
+
+            if (fallbackAudioListener == null)
+            {
+                fallbackAudioListener =
+                    remotePlaybackAudioSource.gameObject.AddComponent<AudioListener>();
+            }
+        }
+
+        if (!fallbackAudioListener.enabled)
+            fallbackAudioListener.enabled = true;
+
+        if (!fallbackAudioListenerReportedActive)
+        {
+            fallbackAudioListenerReportedActive = true;
+            Debug.LogWarning(
+                Prefix +
+                "No active scene AudioListener was available; enabled the WebRTC voice fallback listener.");
+        }
     }
 
     private void SetState(SessionState state, string message)
