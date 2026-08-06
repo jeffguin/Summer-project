@@ -5,11 +5,11 @@ using UnityEngine;
 public class MultiDisplayOutputManager : MonoBehaviour
 {
     [Header("Output Layout")]
-    [Tooltip("First Unity display used for portal output. Use 1 when Display 0 is a control monitor.")]
+    [Tooltip("First Unity display API index used for portal output. Index 0 is Inspector Display 1; use index 1 when Inspector Display 1 is a control monitor.")]
     [Min(0)]
     public int firstOutputDisplay = 1;
 
-    [Tooltip("If there are not enough displays after the control monitor, use Display 0 as the first output.")]
+    [Tooltip("If the requested layout does not fit, use API index 0 (Inspector Display 1) as the first available output.")]
     public bool fallbackToPrimaryDisplay = true;
 
     [Header("Portal Cameras")]
@@ -93,12 +93,14 @@ public class MultiDisplayOutputManager : MonoBehaviour
         if (requestedLayoutFits)
             return requestedStart;
 
-        if (fallbackToPrimaryDisplay && portalCameraCount <= Display.displays.Length)
+        // A partial fallback is still useful. With one detected display, keep the
+        // first portal camera on the primary display and disable only the rest.
+        if (fallbackToPrimaryDisplay && Display.displays.Length > 0)
         {
             Debug.LogWarning(
-                $"The requested portal layout starts at Display {requestedStart}, but only " +
-                $"{Display.displays.Length} display(s) were detected. Portal output will start " +
-                "at Display 0 instead.",
+                $"The requested portal layout starts at display API index {requestedStart}, but only " +
+                $"{Display.displays.Length} display(s) were detected. Available portal output will " +
+                "start at API index 0 (Inspector Display 1).",
                 this);
             return 0;
         }
@@ -112,7 +114,7 @@ public class MultiDisplayOutputManager : MonoBehaviour
         {
             int displayIndex = outputStart + i;
 
-            // Display 0 is the primary display and is already active.
+            // API index 0 is Inspector Display 1, the primary display, and is already active.
             if (displayIndex == 0 || Display.displays[displayIndex].active)
                 continue;
 
