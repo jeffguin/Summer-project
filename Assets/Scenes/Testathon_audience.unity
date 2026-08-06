@@ -14358,7 +14358,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3178703156105824891, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: screen
+<<<<<<< Updated upstream
       value:
+=======
+      value: 
+>>>>>>> Stashed changes
       objectReference: {fileID: 2114776603}
     - target: {fileID: 3219583612492551091, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_IsActive
@@ -14374,7 +14378,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5560740686354218937, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_TargetDisplay
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5560740686354218937, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_CullingMask.m_Bits
@@ -14406,11 +14410,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5987598331420566985, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.7071068
+      value: 0.21372202
+      objectReference: {fileID: 0}
+    - target: {fileID: 5987598331420566985, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.67403483
       objectReference: {fileID: 0}
     - target: {fileID: 5987598331420566985, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.7071068
+      value: 0.6740347
+      objectReference: {fileID: 0}
+    - target: {fileID: 5987598331420566985, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.21372211
       objectReference: {fileID: 0}
     - target: {fileID: 6694995747631573557, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_LocalPosition.z
@@ -14426,7 +14438,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7112334668203838765, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_TargetDisplay
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7112334668203838765, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_CullingMask.m_Bits

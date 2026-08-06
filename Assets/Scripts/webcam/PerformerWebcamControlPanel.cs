@@ -15,7 +15,7 @@ public class PerformerWebcamControlPanel : MonoBehaviour
 
     [Header("Multi-Screen Video Layout")]
     [SerializeField, Min(1)] private int selectorRowsPerColumn = 4;
-    [SerializeField, Min(1f)] private float selectorRowSpacing = 38f;
+    [SerializeField, Min(1f)] private float selectorRowSpacing = 100f;
     [SerializeField, Min(1f)] private float selectorColumnSpacing = 230f;
 
     [Header("Audio UI")]
