@@ -30,7 +30,7 @@ Transform:
   m_GameObject: {fileID: 31884849196472619}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.0021, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 0.7108623, y: 1.0327544, z: 0.7108623}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2841,21 +2841,22 @@ GameObject:
   m_Component:
   - component: {fileID: 8642930500443799980}
   - component: {fileID: 4977256757529890584}
-  - component: {fileID: 371628108718535203}
   - component: {fileID: 1392502235198826394}
   - component: {fileID: 8275301636915467373}
   - component: {fileID: 512298382028878244}
   - component: {fileID: 5438773397010661352}
   - component: {fileID: 5851315885701975256}
+  - component: {fileID: 2290892972151856113}
   - component: {fileID: 8864000933142553621}
   - component: {fileID: 7859468666409372522}
   - component: {fileID: 128804269990070061}
   - component: {fileID: 7506320157238802333}
   - component: {fileID: 7187832350084860554}
-  - component: {fileID: 4409100030450152314}
+  - component: {fileID: 802068306716636420}
+  - component: {fileID: 6793003152018389500}
   m_Layer: 0
   m_Name: Arduino_Circle_tictactoe
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -2900,28 +2901,6 @@ MonoBehaviour:
   _kinematicWhileSelected: 0
   _throwWhenUnselected: 0
   _forceKinematicDisabled: 0
---- !u!64 &371628108718535203
-MeshCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3540298881458678735}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 5
-  m_Convex: 0
-  m_CookingOptions: 30
-  m_Mesh: {fileID: 0}
 --- !u!114 &1392502235198826394
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2963,8 +2942,7 @@ MonoBehaviour:
   _movementProvider: {fileID: 0}
   _handAligment: 1
   _handGrabPoses:
-  - {fileID: 0}
-  - {fileID: 0}
+  - {fileID: 8275301636915467373}
 --- !u!114 &8275301636915467373
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3082,6 +3060,27 @@ MonoBehaviour:
   SyncParent: 0
   _autoAOIOverride: 1
   DisableSharedModeInterpolation: 0
+--- !u!65 &2290892972151856113
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3540298881458678735}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.06, y: 0.015, z: 0.06}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!54 &8864000933142553621
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -3090,7 +3089,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3540298881458678735}
   serializedVersion: 4
-  m_Mass: 1
+  m_Mass: 0.08
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -3108,7 +3107,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 1
 --- !u!114 &7859468666409372522
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3276,7 +3275,7 @@ MonoBehaviour:
   minimumImpactVelocity: 0.5
   maximumImpactVelocity: 6
   impactCooldown: 0.1
---- !u!114 &4409100030450152314
+--- !u!114 &802068306716636420
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3285,11 +3284,58 @@ MonoBehaviour:
   m_GameObject: {fileID: 3540298881458678735}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1541381998, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Script: {fileID: 11500000, guid: 41b95124d57f4c746b730b306b0c225e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Guid:
-    RawGuidValue: cd25f9d9b9095884baa983637203ea64
+--- !u!114 &6793003152018389500
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3540298881458678735}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1464721f2283eb14e94a33e812b47be4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _interactableView: {fileID: 0}
+  _whenHover:
+    m_PersistentCalls:
+      m_Calls: []
+  _whenUnhover:
+    m_PersistentCalls:
+      m_Calls: []
+  _whenSelect:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 802068306716636420}
+        m_TargetAssemblyTypeName: TicTacToeSocketableObject, Assembly-CSharp
+        m_MethodName: RemoveFromSocket
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  _whenUnselect:
+    m_PersistentCalls:
+      m_Calls: []
+  _whenInteractorViewAdded:
+    m_PersistentCalls:
+      m_Calls: []
+  _whenInteractorViewRemoved:
+    m_PersistentCalls:
+      m_Calls: []
+  _whenSelectingInteractorViewAdded:
+    m_PersistentCalls:
+      m_Calls: []
+  _whenSelectingInteractorViewRemoved:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &7457757580128553918
 GameObject:
   m_ObjectHideFlags: 0
