@@ -14378,7 +14378,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5560740686354218937, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_TargetDisplay
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5560740686354218937, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_CullingMask.m_Bits
@@ -14438,7 +14438,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7112334668203838765, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_TargetDisplay
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7112334668203838765, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_CullingMask.m_Bits
@@ -23965,6 +23965,10 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 1456455296}
+    - target: {fileID: 3557498656337173837, guid: 041643f6399363c43a1724fe20480464, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3665969605194430769, guid: 041643f6399363c43a1724fe20480464, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -24093,6 +24097,10 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 1146612255}
+    - target: {fileID: 6333667293119179062, guid: 041643f6399363c43a1724fe20480464, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 6569570819474434260, guid: 041643f6399363c43a1724fe20480464, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -24133,6 +24141,10 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 350165106}
+    - target: {fileID: 7251126598591473692, guid: 041643f6399363c43a1724fe20480464, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7309720571401773446, guid: 041643f6399363c43a1724fe20480464, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -24238,7 +24250,9 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1360170458}
     m_RemovedComponents: []
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 7251126598591473692, guid: 041643f6399363c43a1724fe20480464, type: 3}
+    - {fileID: 7396047898251954724, guid: 041643f6399363c43a1724fe20480464, type: 3}
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 041643f6399363c43a1724fe20480464, type: 3}
