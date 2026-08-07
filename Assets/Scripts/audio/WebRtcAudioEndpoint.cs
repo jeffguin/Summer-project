@@ -334,6 +334,12 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
 
         SetState(SessionState.CaptureStarting, "Requesting permission and starting the Actor microphone.");
 
+        // Unity only drives AudioSource.OnAudioFilterRead while an active
+        // AudioListener exists. Prepare the fallback before starting the
+        // microphone; waiting until OnTrack is too late because capture has a
+        // five-second DSP startup timeout.
+        EnsurePlaybackAudioListener();
+
         MicrophoneCaptureService.CaptureResult captureResult = null;
         yield return captureService.StartCapture(result => captureResult = result);
 
@@ -381,6 +387,11 @@ public sealed class WebRtcAudioEndpoint : MonoBehaviour
         activeSessionId = requestedSessionId;
 
         SetState(SessionState.CaptureStarting, "Starting the selected Audience microphone.");
+
+        // The Audience capture path has the same DSP dependency as the Actor.
+        // Ensure its listener before MicrophoneCaptureService waits for the
+        // first successful OnAudioFilterRead/SetData callback.
+        EnsurePlaybackAudioListener();
 
         MicrophoneCaptureService.CaptureResult captureResult = null;
         yield return captureService.StartCapture(result => captureResult = result);
