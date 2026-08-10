@@ -4,7 +4,7 @@ using Fusion;
 using Fusion.Sockets;
 using Meta.XR.Movement.Networking.Fusion;
 using UnityEngine;
-
+using System.Collections;
 public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 {
     private readonly struct InteractableResetPose
@@ -105,6 +105,22 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
     [Tooltip("开启后每次尝试生成可交互物体时输出更详细的列表元素检查信息。")]
     [SerializeField] private bool _verboseInteractableSpawning = true;
+
+
+    /// 
+    /// added fading part here
+
+    [Header("Reset Fade")]
+    [Tooltip("If enabled, all FadeObject components in the scene will fade in before reset and fade out afterwards.")]
+    [SerializeField] private bool _fadeQuadsDuringReset = true;
+
+    [Tooltip("Extra time to keep the quads fully visible before resetting the objects.")]
+    [SerializeField] private float _resetFadeHoldTime = 0f;
+
+    private Coroutine _resetFadeRoutine;
+    /// 
+
+
 
     [Serializable]
     private class NetworkInteractableSpawnItem
@@ -924,6 +940,75 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     /// 由 State Authority 强制释放并 Teleport 回首次生成位姿。
     /// </summary>
     /// <returns>成功重置的网络交互物体数量。</returns>
+    /// //edited this part to add fading
+    /// 
+
+    //public int ResetAllNetworkInteractables()
+    //{
+    //    if (!IsActorHostReadyForObjectReset)
+    //    {
+    //        Debug.LogWarning(
+    //            "BasicSpawner: Reset All ignored. " +
+    //            "Only the running Actor Host / State Authority can reset interactable objects."
+    //        );
+    //        return 0;
+    //    }
+
+    //    int resetCount = 0;
+
+    //    foreach (KeyValuePair<int, NetworkObject> spawnedEntry in _spawnedInteractableObjects)
+    //    {
+    //        int itemIndex = spawnedEntry.Key;
+    //        NetworkObject networkObject = spawnedEntry.Value;
+
+    //        if (networkObject == null || !networkObject.IsValid)
+    //        {
+    //            Debug.LogWarning(
+    //                $"BasicSpawner: Reset All skipped item index {itemIndex} " +
+    //                "because its NetworkObject is no longer valid."
+    //            );
+    //            continue;
+    //        }
+
+    //        if (!_interactableResetPoses.TryGetValue(
+    //                itemIndex,
+    //                out InteractableResetPose resetPose))
+    //        {
+    //            Debug.LogWarning(
+    //                $"BasicSpawner: Reset All skipped '{networkObject.name}' " +
+    //                "because its initial spawn pose was not recorded."
+    //            );
+    //            continue;
+    //        }
+
+    //        NetworkPhysicalGrabbable grabbable =
+    //            networkObject.GetComponent<NetworkPhysicalGrabbable>();
+
+    //        if (grabbable == null)
+    //        {
+    //            Debug.LogWarning(
+    //                $"BasicSpawner: Reset All skipped '{networkObject.name}' " +
+    //                "because it has no NetworkPhysicalGrabbable component."
+    //            );
+    //            continue;
+    //        }
+
+    //        if (grabbable.ForceResetToPose(resetPose.Position, resetPose.Rotation))
+    //        {
+    //            resetCount++;
+    //        }
+    //    }
+
+    //    Debug.Log(
+    //        $"BasicSpawner: Reset All completed. " +
+    //        $"Reset={resetCount}, Tracked={_spawnedInteractableObjects.Count}."
+    //    );
+
+    //    return resetCount;
+    //}
+
+
+
     public int ResetAllNetworkInteractables()
     {
         if (!IsActorHostReadyForObjectReset)
@@ -932,12 +1017,64 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
                 "BasicSpawner: Reset All ignored. " +
                 "Only the running Actor Host / State Authority can reset interactable objects."
             );
+
             return 0;
         }
 
+        // Prevent multiple reset coroutines from running simultaneously.
+        if (_resetFadeRoutine != null)
+        {
+            StopCoroutine(_resetFadeRoutine);
+        }
+
+        _resetFadeRoutine = StartCoroutine(ResetAllNetworkInteractablesRoutine());
+
+        return 0;
+    }
+
+
+    private IEnumerator ResetAllNetworkInteractablesRoutine()
+    {
+        FadeObject[] fadeObjects =
+            FindObjectsByType<FadeObject>(FindObjectsSortMode.None);
+
+        Debug.Log(
+            $"BasicSpawner: Reset transition started. " +
+            $"Found {fadeObjects.Length} FadeObject(s)."
+        );
+
+        // //-------------------------------------- Fade IN all quads
+    
+
+        foreach (FadeObject fadeObject in fadeObjects)
+        {
+            if (fadeObject == null)
+                continue;
+
+            fadeObject.FadeIn();
+        }
+
+        // Wait for the fade-in to finish.
+        float fadeDuration = GetLongestFadeDuration(fadeObjects);
+
+        if (fadeDuration > 0f)
+        {
+            yield return new WaitForSeconds(fadeDuration);
+        }
+
+        // Optional pause while quads are fully visible.
+        if (_resetFadeHoldTime > 0f)
+        {
+            yield return new WaitForSeconds(_resetFadeHoldTime);
+        }
+
+
+        // ------- -----------  Reset all network interactables  ----------------------
+    
         int resetCount = 0;
 
-        foreach (KeyValuePair<int, NetworkObject> spawnedEntry in _spawnedInteractableObjects)
+        foreach (KeyValuePair<int, NetworkObject> spawnedEntry
+                 in _spawnedInteractableObjects)
         {
             int itemIndex = spawnedEntry.Key;
             NetworkObject networkObject = spawnedEntry.Value;
@@ -948,6 +1085,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
                     $"BasicSpawner: Reset All skipped item index {itemIndex} " +
                     "because its NetworkObject is no longer valid."
                 );
+
                 continue;
             }
 
@@ -959,6 +1097,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
                     $"BasicSpawner: Reset All skipped '{networkObject.name}' " +
                     "because its initial spawn pose was not recorded."
                 );
+
                 continue;
             }
 
@@ -971,10 +1110,13 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
                     $"BasicSpawner: Reset All skipped '{networkObject.name}' " +
                     "because it has no NetworkPhysicalGrabbable component."
                 );
+
                 continue;
             }
 
-            if (grabbable.ForceResetToPose(resetPose.Position, resetPose.Rotation))
+            if (grabbable.ForceResetToPose(
+                    resetPose.Position,
+                    resetPose.Rotation))
             {
                 resetCount++;
             }
@@ -985,8 +1127,49 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             $"Reset={resetCount}, Tracked={_spawnedInteractableObjects.Count}."
         );
 
-        return resetCount;
+        
+        // ----------------------------    Fade OUT all quads
+  
+
+        foreach (FadeObject fadeObject in fadeObjects)
+        {
+            if (fadeObject == null)
+                continue;
+
+            fadeObject.FadeOut();
+        }
+
+        // Wait for fade-out to finish before allowing another reset.
+        if (fadeDuration > 0f)
+        {
+            yield return new WaitForSeconds(fadeDuration);
+        }
+
+        _resetFadeRoutine = null;
+
+        Debug.Log("BasicSpawner: Reset fade transition finished.");
     }
+
+
+    private float GetLongestFadeDuration(FadeObject[] fadeObjects)
+    {
+        float longestDuration = 0f;
+
+        foreach (FadeObject fadeObject in fadeObjects)
+        {
+            if (fadeObject == null)
+                continue;
+
+            if (fadeObject.fadeDuration > longestDuration)
+            {
+                longestDuration = fadeObject.fadeDuration;
+            }
+        }
+
+        return longestDuration;
+    }
+
+
 
     private string GetInteractableName(NetworkInteractableSpawnItem item, int itemIndex)
     {
