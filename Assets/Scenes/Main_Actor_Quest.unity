@@ -29957,7 +29957,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6426652291402431836, guid: eaf7b4c53f0c63542ab03ccbee9e5b2e, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -2.5810003
+      value: -2.878
       objectReference: {fileID: 0}
     - target: {fileID: 6426652291402431836, guid: eaf7b4c53f0c63542ab03ccbee9e5b2e, type: 3}
       propertyPath: m_LocalRotation.w
@@ -40785,7 +40785,6 @@ GameObject:
   - component: {fileID: 7154907528663174003}
   - component: {fileID: 5936451612309170398}
   - component: {fileID: 8415491637662435160}
-  - component: {fileID: 3489043525274244107}
   m_Layer: 14
   m_Name: cUP 1 WITH HANCup 1 with handpose
   m_TagString: cup
@@ -40810,20 +40809,6 @@ MonoBehaviour:
   _maxLinearDelta: 100
   _maxAngularDelta: 200
   _rigidbody: {fileID: 6734103925891703397}
---- !u!114 &3489043525274244107
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3358871701024017539}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 1541381998, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Guid:
-    RawGuidValue: 74c9b8faea8541a4498e1af4e56b4e37
 --- !u!114 &3952886059321459810
 MonoBehaviour:
   m_ObjectHideFlags: 0
