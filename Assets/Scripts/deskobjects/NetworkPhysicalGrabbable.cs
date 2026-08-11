@@ -256,6 +256,17 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             return;
         }
 
+        // Socket ownership lives on State Authority. Detach here so every
+        // interaction path (OVR hand/controller and SteamVR ray) releases the
+        // board slot before the network grab starts.
+        TicTacToeSocketableObject socketable =
+            GetComponent<TicTacToeSocketableObject>();
+
+        if (socketable != null)
+        {
+            socketable.RemoveFromSocket();
+        }
+
         IsGrabbed = true;
         GrabbedByPlayer = requester;
         GrabbedByRoleValue = requesterRoleValue;

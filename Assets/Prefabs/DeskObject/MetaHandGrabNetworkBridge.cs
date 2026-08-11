@@ -154,6 +154,19 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
 
     private void HandleSelect(PointerEvent pointerEvent)
     {
+        // A Grabbable can be driven by hand-pose and controller interactables.
+        // Keep the first selector as the single network target source until it
+        // releases, otherwise two interactables can overwrite each other's
+        // target every frame.
+        if (isSelected)
+        {
+            DebugMessage(
+                $"Additional Select ignored. ActivePointerId={activePointerId}, " +
+                $"IncomingPointerId={pointerEvent.Identifier}"
+            );
+            return;
+        }
+
         if (runner == null)
         {
             runner = FindFirstObjectByType<NetworkRunner>();
