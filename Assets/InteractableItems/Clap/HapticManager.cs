@@ -8,7 +8,7 @@ public class HapticManager : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if(collision.gameObject.tag == "Leaf" || collision.gameObject.tag == "Rod")
+        if (collision.gameObject.tag == "Leaf" || collision.gameObject.tag == "Rod")
         {
             hapticSource.Play();
         }

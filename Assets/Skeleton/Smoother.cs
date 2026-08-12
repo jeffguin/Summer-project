@@ -21,7 +21,7 @@ public class Smoother
     public SkeletonPosition ReceiveNewSensorData(SkeletonPosition newData, bool smoothing)
     {
         // In case list is too big.
-        if(rawData.Count > maxSize)
+        if (rawData.Count > maxSize)
         {
             Resize();
         }
@@ -48,7 +48,7 @@ public class Smoother
         else
         {
             SkeletonPosition temp = smoothenedData[smoothenedData.Count - 1] + newData;
-            if(hasEnoughForSmoothing)
+            if (hasEnoughForSmoothing)
             {
                 temp = temp - rawData[rawData.Count - NumberSmoothingFrames];
             }

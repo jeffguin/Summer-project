@@ -200,7 +200,7 @@ public class TrackerHandler : MonoBehaviour
             parentJointRotationBodySpace = absoluteJointRotations[(int)parent];
         }
         Quaternion jointRotationBodySpace = absoluteJointRotations[(int)jointId];
-        Quaternion relativeRotation =  Quaternion.Inverse(parentJointRotationBodySpace) * jointRotationBodySpace;
+        Quaternion relativeRotation = Quaternion.Inverse(parentJointRotationBodySpace) * jointRotationBodySpace;
 
         return relativeRotation;
     }

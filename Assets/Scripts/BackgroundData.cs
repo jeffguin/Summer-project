@@ -53,7 +53,7 @@ public class BackgroundData : ISerializable
         info.AddValue("DepthImageSize", DepthImageSize, typeof(int));
         info.AddValue("NumOfBodies", NumOfBodies, typeof(ulong));
         Body[] ValidBodies = new Body[NumOfBodies];
-        for (int i = 0; i < (int)NumOfBodies; i ++)
+        for (int i = 0; i < (int)NumOfBodies; i++)
         {
             ValidBodies[i] = Bodies[i];
         }

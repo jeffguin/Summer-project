@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-public abstract class BackgroundDataProvider:IDisposable
+public abstract class BackgroundDataProvider : IDisposable
 {
     private BackgroundData m_frameBackgroundData = new BackgroundData();
     private bool m_latest = false;
