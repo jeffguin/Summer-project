@@ -48,5 +48,13 @@ namespace Valve.VR
                 return SteamVR_Actions.newSet_NewAction2waist;
             }
         }
+        
+        public virtual SteamVR_Action_Vibration highFiveHaptic
+        {
+            get
+            {
+                return SteamVR_Actions.newSet_highFiveHaptic;
+            }
+        }
     }
 }

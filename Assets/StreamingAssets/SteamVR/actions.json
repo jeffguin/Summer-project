@@ -57,6 +57,10 @@
       "name": "/actions/NewSet/in/NewAction2waist",
       "type": "pose",
       "requirement": "suggested"
+    },
+    {
+      "name": "/actions/NewSet/out/highFiveHaptic",
+      "type": "vibration"
     }
   ],
   "action_sets": [
