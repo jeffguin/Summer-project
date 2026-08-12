@@ -2586,7 +2586,7 @@ MonoBehaviour:
   _loadCharacterWhenConnected: 0
   _selectedCharacterIndex: 0
   _characterRetargeterPrefabs:
-  - {fileID: 4633219766519043327, guid: 0e7d2870a3323044791d516385050edb, type: 3}
+  - {fileID: 5574942240849701003, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
   _networkedCharacterHandler: {fileID: 1035244680493917346, guid: e573b432bb8b0274780e30452dabf78c, type: 3}
 --- !u!4 &185154065
 Transform:
@@ -60153,67 +60153,6 @@ MonoBehaviour:
   _kinematicWhileSelected: 0
   _throwWhenUnselected: 0
   _forceKinematicDisabled: 0
---- !u!1001 &9069650026329996052
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: 4822271478396263382, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: _aiMotionSynthesizerConfig.ReferenceTransform
-      value: 
-      objectReference: {fileID: 1248840016}
-    - target: {fileID: 4953657105524989330, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_Name
-      value: 'Suisei V2.3(Atlas-sui_al ) '
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -0.019
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.05300033
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -3.2364073
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7813294756794845563, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -60240,4 +60179,3 @@ SceneRoots:
   - {fileID: 1194689477}
   - {fileID: 7849820079656647634}
   - {fileID: 1248840014}
-  - {fileID: 9069650026329996052}
