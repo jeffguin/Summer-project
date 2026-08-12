@@ -112,7 +112,7 @@ MonoBehaviour:
   _deserializeQueuedFullSnapshotsWithoutAck: 0
   _maximumSendRateHz: 12
   _receiveBufferSize: 3
-  _disableRemoteInterpolation: 1
+  _disableRemoteInterpolation: 0
   _enableStalePacketProtection: 1
   _stalePacketTimeoutSeconds: 0.5
   _validateReceivedPose: 1
@@ -131,3 +131,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _localRootSource: {fileID: 0}
+  _stageSpawnPoint: {fileID: 0}
+  _useYawOnly: 1
+  _lockHeightToSpawnPoint: 1
+  _heightOffset: 0
