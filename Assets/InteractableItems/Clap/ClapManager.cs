@@ -5,17 +5,19 @@ public class ClapManager : MonoBehaviour
 {
     [SerializeField] private AudioSource ClapSound;
 
-    [SerializeField] HapticSource hapticSource;
- 
+    [SerializeField] HapticSource hapticSourceActor;
+    [SerializeField] HapticSource hapticSourceViewer;
+
     private void OnTriggerEnter(Collider other)
     {
-        if(other.CompareTag("ClapReceiver"))
+        if(other.tag == "ClapSender")
         {
             Debug.Log("Clap detected!");
             if (!ClapSound.isPlaying)
             {
                 ClapSound.Play();
-                hapticSource.Play(Controller.Both);
+                hapticSourceActor.Play(Controller.Both);
+                hapticSourceViewer.Play(Controller.Both);
             }
         }
     }
