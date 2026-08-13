@@ -22,16 +22,63 @@ public class MultiDisplayOutputManager : MonoBehaviour
     [Tooltip("Enable the physical screen reference objects used to calculate each frustum.")]
     public bool enablePhysicalScreenObjects = true;
 
-    private void Awake()
+    private void Start()
     {
         PortalCameraController[] portalCameras = ResolvePortalCameras();
-        LogDetectedDisplays();
 
         if (portalCameras.Length == 0)
         {
             Debug.LogWarning("Multi-display setup found no PortalCameraController instances.", this);
             return;
         }
+
+#if UNITY_EDITOR
+        ConfigureEditorPreview(portalCameras);
+#else
+        ConfigureStandaloneOutputs(portalCameras);
+#endif
+    }
+
+    private void ConfigureEditorPreview(PortalCameraController[] portalCameras)
+    {
+        int outputStart = Mathf.Max(0, firstOutputDisplay);
+
+        Debug.Log(
+            "Unity Editor reports only one Display through Display.displays. " +
+            "Portal cameras will remain enabled for Game View preview; physical " +
+            "multi-monitor windows are created only by a standalone build.",
+            this);
+
+        for (int i = 0; i < portalCameras.Length; i++)
+        {
+            PortalCameraController portalController = portalCameras[i];
+            if (portalController == null)
+                continue;
+
+            int displayIndex = outputStart + i;
+            if (displayIndex > 7)
+            {
+                DisablePortalCamera(portalController);
+                Debug.LogWarning(
+                    $"Portal camera '{portalController.name}' exceeds Unity's maximum " +
+                    "display index 7 and was disabled for Editor preview.",
+                    portalController);
+                continue;
+            }
+
+            if (!ConfigurePortalCamera(portalController, displayIndex))
+                continue;
+
+            Debug.Log(
+                $"Editor preview: portal camera '{portalController.name}' assigned to " +
+                $"API index {displayIndex} (Inspector Display {displayIndex + 1}).",
+                portalController);
+        }
+    }
+
+    private void ConfigureStandaloneOutputs(PortalCameraController[] portalCameras)
+    {
+        LogDetectedDisplays();
 
         int outputStart = ResolveOutputStart(portalCameras.Length);
         int availableOutputCount = Mathf.Max(0, Display.displays.Length - outputStart);
@@ -47,16 +94,25 @@ public class MultiDisplayOutputManager : MonoBehaviour
 
             if (i >= activeOutputCount)
             {
-                portalController.gameObject.SetActive(false);
-                Debug.LogError(
+                DisablePortalCamera(portalController);
+                Debug.LogWarning(
                     $"No display is available for portal camera '{portalController.name}'. " +
-                    $"Detected {Display.displays.Length} display(s).",
+                    $"Detected {Display.displays.Length} display(s); the unused camera " +
+                    "was disabled without removing any components.",
                     portalController);
                 continue;
             }
 
             int displayIndex = outputStart + i;
-            ConfigurePortalCamera(portalController, displayIndex);
+            if (!ConfigurePortalCamera(portalController, displayIndex))
+                continue;
+
+            Display display = Display.displays[displayIndex];
+            Debug.Log(
+                $"Portal camera '{portalController.name}' assigned to API index " +
+                $"{displayIndex} (Inspector Display {displayIndex + 1}, " +
+                $"{display.systemWidth}x{display.systemHeight}, active={display.active}).",
+                portalController);
         }
     }
 
@@ -118,17 +174,16 @@ public class MultiDisplayOutputManager : MonoBehaviour
             if (displayIndex == 0 || Display.displays[displayIndex].active)
                 continue;
 
-#if UNITY_EDITOR
-            Debug.Log(
-                $"Display {displayIndex} will be activated by the standalone build.",
-                this);
-#else
             Display.displays[displayIndex].Activate();
-#endif
+
+            Debug.Log(
+                $"Activated native output window for API index {displayIndex} " +
+                $"(Inspector Display {displayIndex + 1}).",
+                this);
         }
     }
 
-    private void ConfigurePortalCamera(
+    private bool ConfigurePortalCamera(
         PortalCameraController portalController,
         int displayIndex)
     {
@@ -138,8 +193,8 @@ public class MultiDisplayOutputManager : MonoBehaviour
             Debug.LogError(
                 $"Portal camera '{portalController.name}' has no Camera component.",
                 portalController);
-            portalController.gameObject.SetActive(false);
-            return;
+            DisablePortalCamera(portalController);
+            return false;
         }
 
         portalCamera.targetDisplay = displayIndex;
@@ -152,11 +207,17 @@ public class MultiDisplayOutputManager : MonoBehaviour
         if (enablePortalCameraObjects)
             portalController.gameObject.SetActive(true);
 
-        Debug.Log(
-            $"Portal camera '{portalController.name}' assigned to Display {displayIndex} " +
-            $"({Display.displays[displayIndex].systemWidth}x" +
-            $"{Display.displays[displayIndex].systemHeight}).",
-            portalController);
+        return true;
+    }
+
+    private static void DisablePortalCamera(PortalCameraController portalController)
+    {
+        Camera portalCamera = portalController.GetComponent<Camera>();
+        if (portalCamera != null)
+            portalCamera.enabled = false;
+
+        portalController.enabled = false;
+        portalController.gameObject.SetActive(false);
     }
 
     private void LogDetectedDisplays()
