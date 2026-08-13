@@ -27,7 +27,7 @@ public class ArduinoController : MonoBehaviour
     [Header("Arduino Messages")]
     [SerializeField] private string buttonPressMessage = "BUTTON_PRESS";
     [SerializeField] private string rotateCompleteMessage = "ROTATE_COMPLETE";
-    [SerializeField] private string sweetCollectedMessage = "SWEET_COLLECTED";
+    [SerializeField] private string sweetCollectedMessage = "2";
 
 
     [Header("Animation")]
@@ -154,8 +154,6 @@ public class ArduinoController : MonoBehaviour
         SendToArduino(sweetCollectedMessage);
 
         PlayFallingAnimation();
-
-
         Destroy(other.gameObject);
 
 
