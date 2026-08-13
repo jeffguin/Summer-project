@@ -576,6 +576,7 @@ GameObject:
   - component: {fileID: 5346755828595233334}
   - component: {fileID: 6492443592855815848}
   - component: {fileID: 8093904897403516966}
+  - component: {fileID: 5481479658456131188}
   m_Layer: 0
   m_Name: Wine
   m_TagString: Untagged
@@ -3061,6 +3062,21 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 0}
+--- !u!114 &5481479658456131188
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1740723253665488002}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e45d08d1e054304a9c579ff1e84fbe1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxWobble: 0.1
+  wobbleSpeed: 3
+  recovery: 1
 --- !u!1 &5407320009365735991
 GameObject:
   m_ObjectHideFlags: 0
