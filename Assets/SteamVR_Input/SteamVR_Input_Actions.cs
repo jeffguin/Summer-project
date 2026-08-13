@@ -45,6 +45,8 @@ namespace Valve.VR
         
         private static SteamVR_Action_Pose p_newSet_NewAction2waist;
         
+        private static SteamVR_Action_Vibration p_newSet_highFiveHaptic;
+        
         public static SteamVR_Action_Vector2 platformer_Move
         {
             get
@@ -157,6 +159,14 @@ namespace Valve.VR
             }
         }
         
+        public static SteamVR_Action_Vibration newSet_highFiveHaptic
+        {
+            get
+            {
+                return SteamVR_Actions.p_newSet_highFiveHaptic.GetCopy<SteamVR_Action_Vibration>();
+            }
+        }
+        
         private static void InitializeActionArrays()
         {
             Valve.VR.SteamVR_Input.actions = new Valve.VR.SteamVR_Action[] {
@@ -173,7 +183,8 @@ namespace Valve.VR
                     SteamVR_Actions.newSet_NewAction1,
                     SteamVR_Actions.newSet_rightconcl,
                     SteamVR_Actions.newSet_righthandplace,
-                    SteamVR_Actions.newSet_NewAction2waist};
+                    SteamVR_Actions.newSet_NewAction2waist,
+                    SteamVR_Actions.newSet_highFiveHaptic};
             Valve.VR.SteamVR_Input.actionsIn = new Valve.VR.ISteamVR_Action_In[] {
                     SteamVR_Actions.platformer_Move,
                     SteamVR_Actions.platformer_Jump,
@@ -189,8 +200,10 @@ namespace Valve.VR
                     SteamVR_Actions.newSet_rightconcl,
                     SteamVR_Actions.newSet_righthandplace,
                     SteamVR_Actions.newSet_NewAction2waist};
-            Valve.VR.SteamVR_Input.actionsOut = new Valve.VR.ISteamVR_Action_Out[0];
-            Valve.VR.SteamVR_Input.actionsVibration = new Valve.VR.SteamVR_Action_Vibration[0];
+            Valve.VR.SteamVR_Input.actionsOut = new Valve.VR.ISteamVR_Action_Out[] {
+                    SteamVR_Actions.newSet_highFiveHaptic};
+            Valve.VR.SteamVR_Input.actionsVibration = new Valve.VR.SteamVR_Action_Vibration[] {
+                    SteamVR_Actions.newSet_highFiveHaptic};
             Valve.VR.SteamVR_Input.actionsPose = new Valve.VR.SteamVR_Action_Pose[] {
                     SteamVR_Actions.platformer_NewAction,
                     SteamVR_Actions.mixedreality_ExternalCamera,
@@ -237,6 +250,7 @@ namespace Valve.VR
             SteamVR_Actions.p_newSet_rightconcl = ((SteamVR_Action_Boolean)(SteamVR_Action.Create<SteamVR_Action_Boolean>("/actions/NewSet/in/rightconcl")));
             SteamVR_Actions.p_newSet_righthandplace = ((SteamVR_Action_Pose)(SteamVR_Action.Create<SteamVR_Action_Pose>("/actions/NewSet/in/righthandplace")));
             SteamVR_Actions.p_newSet_NewAction2waist = ((SteamVR_Action_Pose)(SteamVR_Action.Create<SteamVR_Action_Pose>("/actions/NewSet/in/NewAction2waist")));
+            SteamVR_Actions.p_newSet_highFiveHaptic = ((SteamVR_Action_Vibration)(SteamVR_Action.Create<SteamVR_Action_Vibration>("/actions/NewSet/out/highFiveHaptic")));
         }
     }
 }

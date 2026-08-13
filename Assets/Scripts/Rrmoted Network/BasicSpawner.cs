@@ -131,7 +131,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         [Tooltip("需要由 Actor Host 生成的 Fusion Network Prefab。Prefab 根节点必须包含 NetworkObject，并且必须注册到 Fusion Network Project Config 的 Prefab Table。")]
         public NetworkPrefabRef prefab;
 
-        [Tooltip("该物体在场景中的生成位置。建议在 Actor 场景中创建对应的 SpawnPoint 空物体。")]
+        [Tooltip("该物体在场景中的生成锚点。生成时读取 Transform 的世界坐标和世界旋转，不会把 Inspector 显示的局部坐标当作世界坐标。")]
         public Transform spawnPoint;
 
         [Tooltip("如果没有设置 SpawnPoint，则使用这个备用生成位置。")]
@@ -877,13 +877,24 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
             return;
         }
 
-        Vector3 spawnPosition = item.spawnPoint != null
-            ? item.spawnPoint.position
-            : item.fallbackPosition;
+        Vector3 spawnPosition;
+        Quaternion spawnRotation;
 
-        Quaternion spawnRotation = item.spawnPoint != null
-            ? item.spawnPoint.rotation
-            : Quaternion.Euler(item.fallbackEulerAngles);
+        if (item.spawnPoint != null)
+        {
+            // Transform.GetPositionAndRotation always returns the world pose.
+            // ArduinoPlace1 may remain a child of DeskObjectPlace; its Inspector
+            // local values are never passed to Runner.Spawn.
+            item.spawnPoint.GetPositionAndRotation(
+                out spawnPosition,
+                out spawnRotation
+            );
+        }
+        else
+        {
+            spawnPosition = item.fallbackPosition;
+            spawnRotation = Quaternion.Euler(item.fallbackEulerAngles);
+        }
 
         PlayerRef? inputAuthority = item.assignInputAuthorityToActor
             ? runner.LocalPlayer

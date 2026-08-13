@@ -5,6 +5,9 @@ using UnityEngine;
 
 public class NetworkWebcamControlHub : NetworkBehaviour
 {
+    private const float HighFiveRayTimeoutSeconds = 0.5f;
+    private const float MaximumHighFiveRayLength = 5.5f;
+
     [Header("Video Retry")]
     [SerializeField] private bool autoRetryTransientVideoFailures = true;
     [SerializeField] private int maxAutoRetryAttempts = 2;
@@ -21,6 +24,11 @@ public class NetworkWebcamControlHub : NetworkBehaviour
     private bool videoStartWasRequested;
     private int videoRetryAttempt;
     private bool videoRetryAllowed;
+    private LineRenderer actorHighFiveRayVisual;
+    private Material actorHighFiveRayMaterial;
+    private Vector3 actorHighFiveRayStart;
+    private Vector3 actorHighFiveRayEnd;
+    private float lastHighFiveRayReceiveTime = float.NegativeInfinity;
 
     public override void Spawned()
     {
@@ -64,6 +72,167 @@ public class NetworkWebcamControlHub : NetworkBehaviour
 
         if (audienceRuntime != null)
             audienceRuntime.ForceStopAudienceVideo();
+
+        DestroyActorHighFiveRayVisual();
+    }
+
+    public override void Render()
+    {
+        // The Actor Host owns State Authority for this object. Rendering only
+        // on that peer makes the audience ray visible to the actor without
+        // duplicating it in the audience scene.
+        if (Object == null || !Object.HasStateAuthority)
+            return;
+
+        bool isFresh =
+            Time.realtimeSinceStartup - lastHighFiveRayReceiveTime <=
+            HighFiveRayTimeoutSeconds;
+
+        if (!isFresh)
+        {
+            if (actorHighFiveRayVisual != null)
+                actorHighFiveRayVisual.enabled = false;
+            return;
+        }
+
+        EnsureActorHighFiveRayVisual();
+
+        if (actorHighFiveRayVisual == null)
+            return;
+
+        actorHighFiveRayVisual.enabled = true;
+        actorHighFiveRayVisual.SetPosition(0, actorHighFiveRayStart);
+        actorHighFiveRayVisual.SetPosition(1, actorHighFiveRayEnd);
+    }
+
+    /// <summary>
+    /// Called by the Windows audience client at a throttled rate. The RPC is
+    /// unreliable because a newer ray pose always supersedes an older one.
+    /// </summary>
+    public void SubmitAudienceHighFiveRay(Vector3 start, Vector3 end)
+    {
+        if (Object == null ||
+            !Object.IsValid ||
+            Runner == null ||
+            !Runner.IsRunning)
+        {
+            return;
+        }
+
+        RPC_SubmitAudienceHighFiveRay(start, end);
+    }
+
+    [Rpc(
+        sources: RpcSources.All,
+        targets: RpcTargets.StateAuthority,
+        Channel = RpcChannel.Unreliable,
+        TickAligned = false,
+        HostMode = RpcHostMode.SourceIsHostPlayer
+    )]
+    private void RPC_SubmitAudienceHighFiveRay(
+        Vector3 start,
+        Vector3 end,
+        RpcInfo info = default)
+    {
+        if (Runner == null ||
+            info.Source == PlayerRef.None ||
+            info.Source == Runner.LocalPlayer ||
+            info.Source != GetOnlyOtherPlayer(false) ||
+            !IsFinite(start) ||
+            !IsFinite(end))
+        {
+            return;
+        }
+
+        Vector3 direction = end - start;
+        float length = direction.magnitude;
+
+        if (length < 0.01f)
+            return;
+
+        if (length > MaximumHighFiveRayLength)
+        {
+            end = start +
+                  direction / length * MaximumHighFiveRayLength;
+        }
+
+        actorHighFiveRayStart = start;
+        actorHighFiveRayEnd = end;
+        lastHighFiveRayReceiveTime = Time.realtimeSinceStartup;
+    }
+
+    private void EnsureActorHighFiveRayVisual()
+    {
+        if (actorHighFiveRayVisual != null)
+            return;
+
+        GameObject visualObject = new GameObject(
+            "AudienceHighFiveRay (Network)"
+        );
+        visualObject.transform.SetParent(transform, false);
+
+        actorHighFiveRayVisual =
+            visualObject.AddComponent<LineRenderer>();
+        actorHighFiveRayVisual.useWorldSpace = true;
+        actorHighFiveRayVisual.positionCount = 2;
+        actorHighFiveRayVisual.startWidth = 0.018f;
+        actorHighFiveRayVisual.endWidth = 0.018f;
+        actorHighFiveRayVisual.startColor =
+            new Color(0.15f, 0.85f, 1f, 0.95f);
+        actorHighFiveRayVisual.endColor =
+            new Color(0.05f, 0.35f, 1f, 0.65f);
+        actorHighFiveRayVisual.numCapVertices = 4;
+        actorHighFiveRayVisual.shadowCastingMode =
+            UnityEngine.Rendering.ShadowCastingMode.Off;
+        actorHighFiveRayVisual.receiveShadows = false;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Unlit/Color");
+
+        if (shader != null)
+        {
+            actorHighFiveRayMaterial = new Material(shader)
+            {
+                name = "AudienceHighFiveRay Runtime Material"
+            };
+            actorHighFiveRayVisual.material = actorHighFiveRayMaterial;
+        }
+        else
+        {
+            Debug.LogWarning(
+                "NetworkWebcamControlHub: No unlit shader was available for the actor-side high-five ray."
+            );
+        }
+    }
+
+    private void DestroyActorHighFiveRayVisual()
+    {
+        if (actorHighFiveRayVisual != null)
+        {
+            Destroy(actorHighFiveRayVisual.gameObject);
+            actorHighFiveRayVisual = null;
+        }
+
+        if (actorHighFiveRayMaterial != null)
+        {
+            Destroy(actorHighFiveRayMaterial);
+            actorHighFiveRayMaterial = null;
+        }
+    }
+
+    private static bool IsFinite(Vector3 value)
+    {
+        return IsFinite(value.x) &&
+               IsFinite(value.y) &&
+               IsFinite(value.z);
+    }
+
+    private static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
     }
 
     private IEnumerator ReportCameraListWhenActorIsReady()
