@@ -85,6 +85,12 @@
          "sources" : []
       },
       "/actions/newset" : {
+         "haptics" : [
+            {
+               "output" : "/actions/newset/out/highfivehaptic",
+               "path" : "/user/hand/right/output/haptic"
+            }
+         ],
          "poses" : [
             {
                "output" : "/actions/newset/in/righthandplace",
