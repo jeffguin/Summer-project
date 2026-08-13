@@ -6870,6 +6870,7 @@ GameObject:
   - component: {fileID: 190327125}
   - component: {fileID: 190327128}
   - component: {fileID: 190327129}
+  - component: {fileID: 2147000001}
   m_Layer: 0
   m_Name: ViveRightController
   m_TagString: Untagged
@@ -7008,6 +7009,32 @@ MonoBehaviour:
   debugLog: 1
   drawDebugRay: 1
   debugHoverLog: 0
+--- !u!114 &2147000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 190327124}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6e1c0d8120347339c255a89137e70fc, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  rayVisual: {fileID: 1770680984}
+  hapticAction:
+    actionPath: /actions/NewSet/out/highFiveHaptic
+    needsReinit: 0
+  hapticSource: 2
+  enterRadius: 0.1
+  exitRadius: 0.14
+  hapticCooldown: 0.25
+  maximumHandSweepDistance: 0.5
+  hapticDuration: 0.065
+  hapticFrequency: 150
+  hapticAmplitude: 0.8
+  raySendRate: 20
+  debugLog: 0
 --- !u!114 &203172299
 MonoBehaviour:
   m_ObjectHideFlags: 0
