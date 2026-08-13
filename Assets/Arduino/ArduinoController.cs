@@ -18,6 +18,8 @@ public class ArduinoController : MonoBehaviour
 
     private GameObject spawnedItem;
 
+    private ArduinoDropDiscNetworkSync networkSync;
+
 
     [Header("Sweet/Medal Detection, Destroy and Play Animation")]
     [SerializeField] private Collider TriggerCollider;
@@ -38,8 +40,28 @@ public class ArduinoController : MonoBehaviour
     public bool canRotate = false;
 
 
+    private void Awake()
+    {
+        networkSync = GetComponentInParent<ArduinoDropDiscNetworkSync>();
+    }
+
+
     private void Start()
     {
+        // A networked dispenser is initialized by ArduinoDropDiscNetworkSync.Spawned().
+        // This prevents audience proxies from trying to open the actor's serial port.
+        if (networkSync != null)
+            return;
+
+        OpenSerialPort();
+    }
+
+
+    private void OpenSerialPort()
+    {
+        if (serialPort != null && serialPort.IsOpen)
+            return;
+
         try
         {
             serialPort = new SerialPort(portName, baudRate);
@@ -98,6 +120,12 @@ public class ArduinoController : MonoBehaviour
     {
         Debug.Log("Arduino button pressed.");
 
+        if (networkSync != null && networkSync.IsNetworkSpawned)
+        {
+            networkSync.TrySpawnItemFromStateAuthority();
+            return;
+        }
+
         SpawnItem();
     }
 
@@ -142,10 +170,21 @@ public class ArduinoController : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-   
         if (!other.CompareTag("Sweet"))
             return;
 
+        if (networkSync != null && networkSync.IsNetworkSpawned)
+        {
+            networkSync.TryCollectSweetFromStateAuthority(other);
+            return;
+        }
+
+        HandleSweetCollectedLocally(other);
+    }
+
+
+    private void HandleSweetCollectedLocally(Collider other)
+    {
 
         Debug.Log("Sweet object entered the trigger.");
 
@@ -159,6 +198,84 @@ public class ArduinoController : MonoBehaviour
 
         // Clear reference if this was the spawned object.
         if (other.gameObject == spawnedItem)
+        {
+            spawnedItem = null;
+        }
+    }
+
+
+    internal void ConfigureNetworkAuthority(bool hasStateAuthority)
+    {
+        if (hasStateAuthority)
+        {
+            OpenSerialPort();
+        }
+        else
+        {
+            CloseSerialPort();
+        }
+    }
+
+
+    internal void HandleSweetCollectedOnStateAuthority(GameObject sweetObject)
+    {
+        Debug.Log("Sweet object entered the network-authoritative trigger.");
+        SendToArduino(sweetCollectedMessage);
+        ClearSpawnedItemIfMatches(sweetObject);
+    }
+
+
+    internal void PlayFallingAnimationFromNetwork()
+    {
+        PlayFallingAnimation();
+    }
+
+
+    internal bool TryGetItemSpawnData(
+        out GameObject prefab,
+        out Vector3 spawnPosition,
+        out Quaternion spawnRotation)
+    {
+        prefab = itemIntoVirtualPrefab;
+        spawnPosition = transform.position;
+        spawnRotation = transform.rotation;
+
+        if (prefab == null)
+        {
+            Debug.LogError("Item Into Virtual Prefab has not been assigned.");
+            return false;
+        }
+
+        if (spawnedItem != null)
+        {
+            Debug.LogWarning("An Item_Into_Virtual is already spawned.");
+            return false;
+        }
+
+        if (spawnPoint != null)
+        {
+            spawnPosition = spawnPoint.position;
+            spawnRotation = spawnPoint.rotation;
+        }
+
+        return true;
+    }
+
+
+    internal void RegisterNetworkSpawnedItem(GameObject item)
+    {
+        spawnedItem = item;
+        Debug.Log("Item_Into_Virtual network-spawned.");
+    }
+
+
+    private void ClearSpawnedItemIfMatches(GameObject sweetObject)
+    {
+        if (spawnedItem == null || sweetObject == null)
+            return;
+
+        if (sweetObject == spawnedItem ||
+            sweetObject.transform.IsChildOf(spawnedItem.transform))
         {
             spawnedItem = null;
         }
