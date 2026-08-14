@@ -1914,26 +1914,26 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b1631189d48eb56428d39cdeb3925bae, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _autoStart: 0
+  _autoStart: 1
   _autoStartAsActorHost: 1
   _retryClientJoin: 1
   _clientRetryDelay: 3
   _maxClientRetryCount: 0
   _actorAvatarPrefab:
-    RawGuidValue: 00000000000000000000000000000000
+    RawGuidValue: 357e0c89777fda140ad5073ebb6d16da
   _webRtcSignalHubPrefab:
     RawGuidValue: b7f094163cd314d438c59307ae25d098
   _networkWebcamControlHubPrefab:
-    RawGuidValue: 00000000000000000000000000000000
+    RawGuidValue: cc950a10baf3903488f1ff2329e3d150
   _actorSpawnPoint: {fileID: 446850594}
-  _actorLocalRig: {fileID: 0}
+  _actorLocalRig: {fileID: 1248840016}
   _audienceFishTankRig: {fileID: 0}
-  _performerMenu: {fileID: 0}
+  _performerMenu: {fileID: 116830826}
   _webcamManager: {fileID: 0}
   _audienceWebRtcSender: {fileID: 0}
   _audienceWebcamRuntime: {fileID: 0}
-  _actorWebRtcReceiver: {fileID: 0}
-  _webcamScreen: {fileID: 0}
+  _actorWebRtcReceiver: {fileID: 814317451}
+  _webcamScreen: {fileID: 398050751}
   _actorHeadSource: {fileID: 0}
   _actorLeftHandSource: {fileID: 0}
   _actorRightHandSource: {fileID: 0}
@@ -1942,9 +1942,31 @@ MonoBehaviour:
   _synchronizeRoleSceneThroughFusion: 0
   _debugInteractableSpawning: 1
   _verboseInteractableSpawning: 1
-  _fadeQuadsDuringReset: 1
-  _resetFadeHoldTime: 0
-  _networkInteractableSpawnItems: []
+  _networkInteractableSpawnItems:
+  - name: Cup
+    prefab:
+      RawGuidValue: f5a24268a8c63d64eb1d922cf015239e
+    spawnPoint: {fileID: 1437393714}
+    fallbackPosition: {x: 0, y: 1.3, z: 0}
+    fallbackEulerAngles: {x: 0, y: 0, z: 0}
+    spawnOnActorHostStart: 1
+    assignInputAuthorityToActor: 0
+  - name: chess1
+    prefab:
+      RawGuidValue: b95f6e28947d57f4498f88df5ab2720a
+    spawnPoint: {fileID: 1447765263}
+    fallbackPosition: {x: 0, y: 1.3, z: 0}
+    fallbackEulerAngles: {x: 0, y: 0, z: 0}
+    spawnOnActorHostStart: 1
+    assignInputAuthorityToActor: 0
+  - name: arduino1
+    prefab:
+      RawGuidValue: cc78a7c20a1d093439cb45d591781d1e
+    spawnPoint: {fileID: 1495575924}
+    fallbackPosition: {x: 0, y: 0, z: 0}
+    fallbackEulerAngles: {x: 0, y: 0, z: 0}
+    spawnOnActorHostStart: 1
+    assignInputAuthorityToActor: 0
 --- !u!4 &110198571
 Transform:
   m_ObjectHideFlags: 0
@@ -30841,6 +30863,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 585e0dc7e88b2094da00afecf3fb06d3, type: 3}
+--- !u!1 &1248840016 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2491260014727082204, guid: 585e0dc7e88b2094da00afecf3fb06d3, type: 3}
+  m_PrefabInstance: {fileID: 1248840014}
+  m_PrefabAsset: {fileID: 0}
 --- !u!114 &1248840015 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 1627930838133901605, guid: 585e0dc7e88b2094da00afecf3fb06d3, type: 3}
