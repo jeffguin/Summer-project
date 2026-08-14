@@ -204,8 +204,9 @@ public class ArduinoController : MonoBehaviour
 
         // Tell Arduino that the Sweet/medal was collected.
         SendToArduino(sweetCollectedMessage);
-
+        //play animation here
         PlayFallingAnimation();
+        //destory the object in contact with the box
         Destroy(other.gameObject);
 
 
@@ -317,6 +318,7 @@ public class ArduinoController : MonoBehaviour
 
     public void SendToArduino(string message)
     {
+        Debug.Log("test");
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort == null || !serialPort.IsOpen)
         {
