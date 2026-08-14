@@ -7112,6 +7112,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Mug (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 2808569462268358006, guid: 25c090698b1b94e4d9a8f6d5494bdf31, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3292654313950918604, guid: 25c090698b1b94e4d9a8f6d5494bdf31, type: 3}
       propertyPath: m_LocalScale.x
       value: 1.3559564
@@ -15432,6 +15436,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: smooth bottle handposed
       objectReference: {fileID: 0}
+    - target: {fileID: 3437738917719790247, guid: dd3a8460ab68d1e4eb01e583480fd856, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3599412282263595961, guid: dd3a8460ab68d1e4eb01e583480fd856, type: 3}
       propertyPath: m_Enabled
       value: 0
@@ -20710,6 +20718,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Arduino_Circle_tictactoe handposed
       objectReference: {fileID: 0}
+    - target: {fileID: 2224105635199298228, guid: 741d3c7d8bde5dd41ac15be413a69ea4, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 2727329613631484521, guid: 741d3c7d8bde5dd41ac15be413a69ea4, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -20818,6 +20830,10 @@ PrefabInstance:
     - target: {fileID: 3072711161128759317, guid: 4efae5fbc969d614cbfc73152df2a875, type: 3}
       propertyPath: m_Name
       value: Holdable handposed
+      objectReference: {fileID: 0}
+    - target: {fileID: 3072711161128759317, guid: 4efae5fbc969d614cbfc73152df2a875, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4687140131923226813, guid: 4efae5fbc969d614cbfc73152df2a875, type: 3}
       propertyPath: m_LocalPosition.x
@@ -39192,7 +39208,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1476022797
 Transform:
   m_ObjectHideFlags: 0
@@ -46699,6 +46715,10 @@ PrefabInstance:
     - target: {fileID: 1271819675091307709, guid: d01e223868dfa554183f51ead572643a, type: 3}
       propertyPath: m_Name
       value: Glass_round_cup handposed
+      objectReference: {fileID: 0}
+    - target: {fileID: 1271819675091307709, guid: d01e223868dfa554183f51ead572643a, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3924445183670915900, guid: d01e223868dfa554183f51ead572643a, type: 3}
       propertyPath: m_Mesh
