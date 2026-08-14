@@ -1,7 +1,8 @@
 using UnityEngine;
 using System;
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 using System.IO.Ports;
-using System.Threading;
+#endif
 
 public class ArduinoController : MonoBehaviour
 {
@@ -9,7 +10,9 @@ public class ArduinoController : MonoBehaviour
     public string portName = "COM4";
     public int baudRate = 9600;
 
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     private SerialPort serialPort;
+#endif
 
 
     [Header("TicTacToe Object Spawning")]
@@ -49,7 +52,8 @@ public class ArduinoController : MonoBehaviour
     private void Start()
     {
         // A networked dispenser is initialized by ArduinoDropDiscNetworkSync.Spawned().
-        // This prevents audience proxies from trying to open the actor's serial port.
+        // In the Quest/Windows setup the Windows proxy owns the serial transport,
+        // while the Quest host remains authoritative over network gameplay.
         if (networkSync != null)
             return;
 
@@ -59,6 +63,7 @@ public class ArduinoController : MonoBehaviour
 
     private void OpenSerialPort()
     {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort != null && serialPort.IsOpen)
             return;
 
@@ -74,11 +79,18 @@ public class ArduinoController : MonoBehaviour
         {
             Debug.LogError("Could not connect to Arduino: " + e.Message);
         }
+#else
+        Debug.Log(
+            "Arduino serial transport is disabled on this platform. " +
+            "The Windows network peer is expected to own the COM port."
+        );
+#endif
     }
 
 
     private void Update()
     {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort == null || !serialPort.IsOpen)
             return;
 
@@ -113,6 +125,7 @@ public class ArduinoController : MonoBehaviour
         {
             Debug.LogError("Arduino read error: " + e.Message);
         }
+#endif
     }
 
 
@@ -122,7 +135,7 @@ public class ArduinoController : MonoBehaviour
 
         if (networkSync != null && networkSync.IsNetworkSpawned)
         {
-            networkSync.TrySpawnItemFromStateAuthority();
+            networkSync.RequestSpawnItemFromHardwarePeer();
             return;
         }
 
@@ -204,9 +217,9 @@ public class ArduinoController : MonoBehaviour
     }
 
 
-    internal void ConfigureNetworkAuthority(bool hasStateAuthority)
+    internal void ConfigureNetworkPeer(bool isNetworkSpawned)
     {
-        if (hasStateAuthority)
+        if (isNetworkSpawned)
         {
             OpenSerialPort();
         }
@@ -220,8 +233,13 @@ public class ArduinoController : MonoBehaviour
     internal void HandleSweetCollectedOnStateAuthority(GameObject sweetObject)
     {
         Debug.Log("Sweet object entered the network-authoritative trigger.");
-        SendToArduino(sweetCollectedMessage);
         ClearSpawnedItemIfMatches(sweetObject);
+    }
+
+
+    internal void SendSweetCollectedToHardwareFromNetwork()
+    {
+        SendToArduino(sweetCollectedMessage);
     }
 
 
@@ -299,6 +317,7 @@ public class ArduinoController : MonoBehaviour
 
     public void SendToArduino(string message)
     {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort == null || !serialPort.IsOpen)
         {
             Debug.LogWarning(
@@ -319,6 +338,7 @@ public class ArduinoController : MonoBehaviour
         {
             Debug.LogError("Arduino write error: " + e.Message);
         }
+#endif
     }
 
 
@@ -336,6 +356,7 @@ public class ArduinoController : MonoBehaviour
 
     private void CloseSerialPort()
     {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort == null)
             return;
 
@@ -355,5 +376,6 @@ public class ArduinoController : MonoBehaviour
                 "Error closing Arduino serial port: " + e.Message
             );
         }
+#endif
     }
 }

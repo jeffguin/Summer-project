@@ -28,7 +28,9 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
             return;
         }
 
-        controller.ConfigureNetworkAuthority(Object.HasStateAuthority);
+        // Every peer receives this network object. Only Windows/Editor peers
+        // open the COM port; the Quest host keeps State Authority.
+        controller.ConfigureNetworkPeer(true);
 
         Debug.Log(
             $"[ArduinoDropDiscNetworkSync] {name}: Spawned. " +
@@ -41,8 +43,38 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
     {
         if (controller != null)
         {
-            controller.ConfigureNetworkAuthority(false);
+            controller.ConfigureNetworkPeer(false);
         }
+    }
+
+
+    public void RequestSpawnItemFromHardwarePeer()
+    {
+        if (!IsNetworkSpawned)
+            return;
+
+        if (Object.HasStateAuthority)
+        {
+            TrySpawnItemFromStateAuthority();
+            return;
+        }
+
+        RPC_RequestSpawnItemFromHardwarePeer();
+    }
+
+
+    [Rpc(
+        RpcSources.All,
+        RpcTargets.StateAuthority,
+        Channel = RpcChannel.Reliable)]
+    private void RPC_RequestSpawnItemFromHardwarePeer(RpcInfo info = default)
+    {
+        Debug.Log(
+            $"[ArduinoDropDiscNetworkSync] {name}: " +
+            $"Spawn requested by hardware peer {info.Source}."
+        );
+
+        TrySpawnItemFromStateAuthority();
     }
 
 
@@ -108,9 +140,10 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
 
         controller.HandleSweetCollectedOnStateAuthority(sweetObject);
 
-        // The reliable RPC invokes locally on the actor host and on every
-        // audience proxy, so all peers set the same Animator trigger once.
-        RPC_PlayFallingAnimationForEveryone();
+        // The reliable RPC invokes locally on the Quest host and on every
+        // audience proxy. Windows owns the serial connection; all peers play
+        // the same animation once.
+        RPC_HandleSweetCollectedForEveryone();
 
         DespawnCollectedSweet(sweetObject, sweetNetworkObject);
     }
@@ -120,7 +153,7 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
         RpcSources.StateAuthority,
         RpcTargets.All,
         Channel = RpcChannel.Reliable)]
-    private void RPC_PlayFallingAnimationForEveryone()
+    private void RPC_HandleSweetCollectedForEveryone()
     {
         EnsureController();
 
@@ -128,11 +161,12 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
         {
             Debug.LogError(
                 $"[ArduinoDropDiscNetworkSync] {name}: " +
-                "Cannot play the falling animation because ArduinoController is missing."
+                "Cannot handle the collected Sweet because ArduinoController is missing."
             );
             return;
         }
 
+        controller.SendSweetCollectedToHardwareFromNetwork();
         controller.PlayFallingAnimationFromNetwork();
     }
 
