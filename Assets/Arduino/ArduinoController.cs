@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 using System.IO.Ports;
+using System.Collections;
 #endif
 
 public class ArduinoController : MonoBehaviour
@@ -41,6 +42,10 @@ public class ArduinoController : MonoBehaviour
 
     [Header("Rotation")]
     public bool canRotate = false;
+
+    [Header("Into Virtual Cooldown")]
+    [SerializeField] private float intoVirtualCooldown = 5f;
+    [SerializeField] private bool canIntoVirtual = true;
 
 
     private void Awake()
@@ -90,6 +95,16 @@ public class ArduinoController : MonoBehaviour
 
     private void Update()
     {
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            SendToArduino("2");
+        }
+
+        if(Input.GetKeyDown(KeyCode.R))
+        {
+            ArduinoButtonPressed();
+        }
+
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort == null || !serialPort.IsOpen)
             return;
@@ -105,6 +120,7 @@ public class ArduinoController : MonoBehaviour
 
                 if (message == buttonPressMessage)
                 {
+                    Debug.Log("Arduino button press detected.");
                     ArduinoButtonPressed();
                 }
 
@@ -131,8 +147,14 @@ public class ArduinoController : MonoBehaviour
 
     public void ArduinoButtonPressed()
     {
-        Debug.Log("Arduino button pressed.");
-
+        if(canIntoVirtual)
+        {
+            canIntoVirtual = false;
+            Debug.Log("Arduino button pressed.");
+            StartCoroutine(IntoVirtualCooldown());
+            return;
+        }
+        
         if (networkSync != null && networkSync.IsNetworkSpawned)
         {
             networkSync.RequestSpawnItemFromHardwarePeer();
@@ -140,6 +162,13 @@ public class ArduinoController : MonoBehaviour
         }
 
         SpawnItem();
+    }
+
+    private IEnumerator IntoVirtualCooldown()
+    {
+        yield return new WaitForSeconds(intoVirtualCooldown);
+        canIntoVirtual = true;
+        Debug.Log("Into Virtual cooldown finished.");
     }
 
 
