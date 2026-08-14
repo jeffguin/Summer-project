@@ -151,6 +151,7 @@ public class ArduinoController : MonoBehaviour
         {
             canIntoVirtual = false;
             Debug.Log("Arduino button pressed.");
+            Instantiate(itemIntoVirtualPrefab, spawnPoint.position, Quaternion.identity);
             StartCoroutine(IntoVirtualCooldown());
             return;
         }
