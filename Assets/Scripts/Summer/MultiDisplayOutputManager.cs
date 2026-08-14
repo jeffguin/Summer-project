@@ -7,7 +7,7 @@ public class MultiDisplayOutputManager : MonoBehaviour
     [Header("Output Layout")]
     [Tooltip("First Unity display API index used for portal output. Index 0 is Inspector Display 1; use index 1 when Inspector Display 1 is a control monitor.")]
     [Min(0)]
-    public int firstOutputDisplay = 1;
+    public int firstOutputDisplay = 0;
 
     [Tooltip("If the requested layout does not fit, use API index 0 (Inspector Display 1) as the first available output.")]
     public bool fallbackToPrimaryDisplay = true;
