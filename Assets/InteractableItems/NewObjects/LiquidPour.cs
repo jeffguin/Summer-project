@@ -85,7 +85,11 @@ public class LiquidPour : MonoBehaviour
     private void StopPouring()
     {
         isPouring = false;
-        pourParticles.Stop();
+
+        pourParticles.Stop(
+            true,
+            ParticleSystemStopBehavior.StopEmittingAndClear
+        );
     }
 
     private void DrainLiquid()
@@ -96,8 +100,10 @@ public class LiquidPour : MonoBehaviour
 
         liquidMaterial.SetFloat("_Fill", currentFill);
 
-        if (currentFill <= 0f)
+        if (currentFill <= 0.01f)
         {
+            currentFill = 0f;
+            liquidMaterial.SetFloat("_Fill", 0f);
             StopPouring();
         }
     }

@@ -685,12 +685,20 @@ PrefabInstance:
       objectReference: {fileID: 1231753406}
     - target: {fileID: 3924445183670915900, guid: d01e223868dfa554183f51ead572643a, type: 3}
       propertyPath: m_VersionIndex
-      value: 1756
+      value: 1762
+      objectReference: {fileID: 0}
+    - target: {fileID: 4282747355490609758, guid: d01e223868dfa554183f51ead572643a, type: 3}
+      propertyPath: drainSpeed
+      value: 0.02
       objectReference: {fileID: 0}
     - target: {fileID: 4282747355490609758, guid: d01e223868dfa554183f51ead572643a, type: 3}
       propertyPath: pourPrefab
       value: 
       objectReference: {fileID: 6468755979351554019, guid: 0ca7bce54d6eeb24fb97b638e0811597, type: 3}
+    - target: {fileID: 4282747355490609758, guid: d01e223868dfa554183f51ead572643a, type: 3}
+      propertyPath: startingFill
+      value: 0.6
+      objectReference: {fileID: 0}
     - target: {fileID: 4282747355490609758, guid: d01e223868dfa554183f51ead572643a, type: 3}
       propertyPath: pourStartAngle
       value: 70
