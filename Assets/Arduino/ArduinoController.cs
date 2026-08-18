@@ -55,13 +55,10 @@ public class ArduinoController : MonoBehaviour
 
     private void Start()
     {
-        // A networked dispenser is initialized by ArduinoDropDiscNetworkSync.Spawned().
-        // In the Quest/Windows setup the Windows proxy owns the serial transport,
-        // while the Quest host remains authoritative over network gameplay.
+        OpenSerialPort();
+
         if (networkSync != null)
             return;
-
-        OpenSerialPort();
     }
 
 
@@ -70,6 +67,8 @@ public class ArduinoController : MonoBehaviour
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort != null && serialPort.IsOpen)
             return;
+
+        Debug.Log("Attempting to connect to Arduino on " + portName);
 
         try
         {
@@ -361,8 +360,17 @@ public class ArduinoController : MonoBehaviour
 
     public void SendToArduino(string message)
     {
-        Debug.Log("test");
+        Debug.Log("SendToArduino called with: " + message);
+
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        Debug.Log("serialPort null: " + (serialPort == null));
+
+        if (serialPort != null)
+        {
+            Debug.Log("serialPort open: " + serialPort.IsOpen);
+            Debug.Log("serialPort port: " + serialPort.PortName);
+        }
+
         if (serialPort == null || !serialPort.IsOpen)
         {
             Debug.LogWarning(
@@ -372,16 +380,20 @@ public class ArduinoController : MonoBehaviour
             return;
         }
 
+        Debug.Log("About to enter Arduino try");
 
         try
         {
+            Debug.Log("About to WriteLine");
+
             serialPort.WriteLine(message);
 
+            Debug.Log("WriteLine finished");
             Debug.Log("Sent to Arduino: " + message);
         }
         catch (Exception e)
         {
-            Debug.LogError("Arduino write error: " + e.Message);
+            Debug.LogError("Arduino write error: " + e.ToString());
         }
 #endif
     }

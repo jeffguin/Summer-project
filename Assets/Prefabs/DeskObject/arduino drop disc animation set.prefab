@@ -175,8 +175,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 49a36df7ac994863a501bfa2f74d0bc1, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   controller: {fileID: 0}
 --- !u!1 &5439583829300793145
 GameObject:
@@ -622,7 +622,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5016994023596572558, guid: 26822ff4f93730440a9c07d03372f13e, type: 3}
       propertyPath: portName
-      value: COM1
+      value: COM4
       objectReference: {fileID: 0}
     - target: {fileID: 5016994023596572558, guid: 26822ff4f93730440a9c07d03372f13e, type: 3}
       propertyPath: spawnPoint
