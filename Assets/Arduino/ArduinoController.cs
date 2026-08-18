@@ -1,5 +1,6 @@
 using UnityEngine;
 using System;
+using System.Collections;
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 using System.IO.Ports;
 #endif
@@ -34,13 +35,16 @@ public class ArduinoController : MonoBehaviour
     [SerializeField] private string rotateCompleteMessage = "ROTATE_COMPLETE";
     [SerializeField] private string sweetCollectedMessage = "2";
 
-
     [Header("Animation")]
     [SerializeField] private string fallTriggerName = "Fall";
 
 
     [Header("Rotation")]
     public bool canRotate = false;
+
+    [Header("Into Virtual Cooldown")]
+    [SerializeField] private float intoVirtualCooldown = 5f;
+    [SerializeField] private bool canIntoVirtual = true;
 
 
     private void Awake()
@@ -51,13 +55,10 @@ public class ArduinoController : MonoBehaviour
 
     private void Start()
     {
-        // A networked dispenser is initialized by ArduinoDropDiscNetworkSync.Spawned().
-        // In the Quest/Windows setup the Windows proxy owns the serial transport,
-        // while the Quest host remains authoritative over network gameplay.
+        OpenSerialPort();
+
         if (networkSync != null)
             return;
-
-        OpenSerialPort();
     }
 
 
@@ -66,6 +67,8 @@ public class ArduinoController : MonoBehaviour
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort != null && serialPort.IsOpen)
             return;
+
+        Debug.Log("Attempting to connect to Arduino on " + portName);
 
         try
         {
@@ -90,6 +93,16 @@ public class ArduinoController : MonoBehaviour
 
     private void Update()
     {
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            SendToArduino("2");
+        }
+
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            ArduinoButtonPressed();
+        }
+
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         if (serialPort == null || !serialPort.IsOpen)
             return;
@@ -105,6 +118,7 @@ public class ArduinoController : MonoBehaviour
 
                 if (message == buttonPressMessage)
                 {
+                    Debug.Log("Arduino button press detected.");
                     ArduinoButtonPressed();
                 }
 
@@ -131,15 +145,37 @@ public class ArduinoController : MonoBehaviour
 
     public void ArduinoButtonPressed()
     {
+        if (!canIntoVirtual)
+        {
+            Debug.Log("Sweet drop is on cooldown.");
+            return;
+        }
+
+        canIntoVirtual = false;
+
         Debug.Log("Arduino button pressed.");
+
+        StartCoroutine(IntoVirtualCooldown());
 
         if (networkSync != null && networkSync.IsNetworkSpawned)
         {
+            Debug.Log("Requesting NETWORK Sweet spawn.");
+
             networkSync.RequestSpawnItemFromHardwarePeer();
             return;
         }
 
+        Debug.Log("Spawning LOCAL Sweet.");
+
         SpawnItem();
+    }
+
+
+    private IEnumerator IntoVirtualCooldown()
+    {
+        yield return new WaitForSeconds(intoVirtualCooldown);
+        canIntoVirtual = true;
+        Debug.Log("Into Virtual cooldown finished.");
     }
 
 
@@ -250,6 +286,12 @@ public class ArduinoController : MonoBehaviour
     }
 
 
+    internal void PlaySweetDropAnimationFromNetwork()
+    {
+        PlayFallingAnimation();
+    }
+
+
     internal bool TryGetItemSpawnData(
         out GameObject prefab,
         out Vector3 spawnPosition,
@@ -318,8 +360,17 @@ public class ArduinoController : MonoBehaviour
 
     public void SendToArduino(string message)
     {
-        Debug.Log("test");
+        Debug.Log("SendToArduino called with: " + message);
+
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        Debug.Log("serialPort null: " + (serialPort == null));
+
+        if (serialPort != null)
+        {
+            Debug.Log("serialPort open: " + serialPort.IsOpen);
+            Debug.Log("serialPort port: " + serialPort.PortName);
+        }
+
         if (serialPort == null || !serialPort.IsOpen)
         {
             Debug.LogWarning(
@@ -329,16 +380,20 @@ public class ArduinoController : MonoBehaviour
             return;
         }
 
+        Debug.Log("About to enter Arduino try");
 
         try
         {
+            Debug.Log("About to WriteLine");
+
             serialPort.WriteLine(message);
 
+            Debug.Log("WriteLine finished");
             Debug.Log("Sent to Arduino: " + message);
         }
         catch (Exception e)
         {
-            Debug.LogError("Arduino write error: " + e.Message);
+            Debug.LogError("Arduino write error: " + e.ToString());
         }
 #endif
     }
