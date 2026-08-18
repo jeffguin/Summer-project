@@ -55321,7 +55321,7 @@ PrefabInstance:
     - target: {fileID: 7137253552642656580, guid: 513fcee460b47dc4c986738cff93777a, type: 3}
       propertyPath: spawnPoint
       value: 
-      objectReference: {fileID: 5591862623326351806}
+      objectReference: {fileID: 0}
     - target: {fileID: 7137253552642656580, guid: 513fcee460b47dc4c986738cff93777a, type: 3}
       propertyPath: TriggerCollider
       value: 
@@ -55556,11 +55556,6 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
---- !u!4 &5591862623326351806 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 8213530721390417612, guid: ab82b295bb1a3fb4fb1770fdbff3f5f7, type: 3}
-  m_PrefabInstance: {fileID: 7391699343280297119}
-  m_PrefabAsset: {fileID: 0}
 --- !u!114 &5926626528184725794
 MonoBehaviour:
   m_ObjectHideFlags: 0

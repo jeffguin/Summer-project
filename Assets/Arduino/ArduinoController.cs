@@ -1,8 +1,8 @@
 using UnityEngine;
 using System;
+using System.Collections;
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 using System.IO.Ports;
-using System.Collections;
 #endif
 
 public class ArduinoController : MonoBehaviour
@@ -34,7 +34,6 @@ public class ArduinoController : MonoBehaviour
     [SerializeField] private string buttonPressMessage = "BUTTON_PRESS";
     [SerializeField] private string rotateCompleteMessage = "ROTATE_COMPLETE";
     [SerializeField] private string sweetCollectedMessage = "2";
-
 
     [Header("Animation")]
     [SerializeField] private string fallTriggerName = "Fall";
@@ -100,7 +99,7 @@ public class ArduinoController : MonoBehaviour
             SendToArduino("2");
         }
 
-        if(Input.GetKeyDown(KeyCode.R))
+        if (Input.GetKeyDown(KeyCode.R))
         {
             ArduinoButtonPressed();
         }
@@ -147,23 +146,31 @@ public class ArduinoController : MonoBehaviour
 
     public void ArduinoButtonPressed()
     {
-        if(canIntoVirtual)
+        if (!canIntoVirtual)
         {
-            canIntoVirtual = false;
-            Debug.Log("Arduino button pressed.");
-            Instantiate(itemIntoVirtualPrefab, spawnPoint.position, Quaternion.identity);
-            StartCoroutine(IntoVirtualCooldown());
+            Debug.Log("Sweet drop is on cooldown.");
             return;
         }
-        
+
+        canIntoVirtual = false;
+
+        Debug.Log("Arduino button pressed.");
+
+        StartCoroutine(IntoVirtualCooldown());
+
         if (networkSync != null && networkSync.IsNetworkSpawned)
         {
+            Debug.Log("Requesting NETWORK Sweet spawn.");
+
             networkSync.RequestSpawnItemFromHardwarePeer();
             return;
         }
 
+        Debug.Log("Spawning LOCAL Sweet.");
+
         SpawnItem();
     }
+
 
     private IEnumerator IntoVirtualCooldown()
     {
@@ -274,6 +281,12 @@ public class ArduinoController : MonoBehaviour
 
 
     internal void PlayFallingAnimationFromNetwork()
+    {
+        PlayFallingAnimation();
+    }
+
+
+    internal void PlaySweetDropAnimationFromNetwork()
     {
         PlayFallingAnimation();
     }
