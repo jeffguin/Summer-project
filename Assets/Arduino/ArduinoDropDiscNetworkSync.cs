@@ -119,6 +119,29 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
         }
 
         controller.RegisterNetworkSpawnedItem(spawnedObject.gameObject);
+
+        RPC_PlaySweetDropAnimation();
+    }
+
+
+    [Rpc(
+        RpcSources.StateAuthority,
+        RpcTargets.All,
+        Channel = RpcChannel.Reliable)]
+    private void RPC_PlaySweetDropAnimation()
+    {
+        EnsureController();
+
+        if (controller == null)
+        {
+            Debug.LogError(
+                $"[ArduinoDropDiscNetworkSync] {name}: " +
+                "Cannot play Sweet drop animation because ArduinoController is missing."
+            );
+            return;
+        }
+
+        controller.PlaySweetDropAnimationFromNetwork();
     }
 
 
