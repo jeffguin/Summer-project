@@ -19848,6 +19848,8 @@ MonoBehaviour:
     RawGuidValue: b7f094163cd314d438c59307ae25d098
   _networkWebcamControlHubPrefab:
     RawGuidValue: cc950a10baf3903488f1ff2329e3d150
+  _audiencePoseNetworkHubPrefab:
+    RawGuidValue: f404e8bfbf5a42beac975f52fcc0f843
   _actorSpawnPoint: {fileID: 0}
   _actorLocalRig: {fileID: 0}
   _audienceFishTankRig: {fileID: 459927568}
@@ -44995,13 +44997,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1316534001}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0.30150464, y: 0, z: 0, w: 0.95346475}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 190327127}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 35.096, y: 0, z: 0}
 --- !u!1 &1318129772
 GameObject:
   m_ObjectHideFlags: 0
@@ -65893,6 +65895,10 @@ PrefabInstance:
       propertyPath: m_projectionMatrixMode
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 1434145801396972273, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 1827271744661439093, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_TargetDisplay
       value: 1
@@ -80447,19 +80453,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a6e1c0d8120347339c255a89137e70fc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  rayVisual: {fileID: 1770680984}
   hapticAction:
     actionPath: /actions/NewSet/out/highFiveHaptic
     needsReinit: 0
   hapticSource: 2
-  enterRadius: 0.1
-  exitRadius: 0.14
-  hapticCooldown: 0.25
-  maximumHandSweepDistance: 0.5
   hapticDuration: 0.065
   hapticFrequency: 150
   hapticAmplitude: 0.8
-  raySendRate: 20
   debugLog: 0
 --- !u!1 &751421431924741612
 GameObject:

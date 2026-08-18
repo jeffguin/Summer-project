@@ -49,6 +49,10 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [Header("Webcam Control Hub")]
     [SerializeField] private NetworkPrefabRef _networkWebcamControlHubPrefab;
 
+    [Header("Audience Pose Hub")]
+    [Tooltip("独立同步观众 Vive Tracker 头部和右手手柄姿态的网络 Prefab。")]
+    [SerializeField] private NetworkPrefabRef _audiencePoseNetworkHubPrefab;
+
     [Header("Spawn Points")]
     [SerializeField] private Transform _actorSpawnPoint;
 
@@ -141,6 +145,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
     private NetworkObject _webRtcSignalHubObject;
     private NetworkObject _networkWebcamControlHubObject;
+    private NetworkObject _audiencePoseNetworkHubObject;
     private NetworkObject _actorAvatarObject;
 
     private readonly Dictionary<int, NetworkObject> _spawnedInteractableObjects =
@@ -375,6 +380,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         _runner = null;
         _webRtcSignalHubObject = null;
         _networkWebcamControlHubObject = null;
+        _audiencePoseNetworkHubObject = null;
         _actorAvatarObject = null;
         _spawnedInteractableObjects.Clear();
         _interactableResetPoses.Clear();
@@ -492,6 +498,7 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
         SpawnWebRtcSignalHubIfNeeded(runner);
         SpawnNetworkWebcamControlHubIfNeeded(runner);
+        SpawnAudiencePoseNetworkHubIfNeeded(runner);
         SpawnNetworkInteractableObjectsIfNeeded(runner);
 
         Debug.Log("BasicSpawner: Initial network objects checked/spawned by Actor Host.");
@@ -535,6 +542,30 @@ public class BasicSpawner : MonoBehaviour, INetworkRunnerCallbacks
         );
 
         Debug.Log("BasicSpawner: NetworkWebcamControlHub spawned by Actor Host.");
+    }
+
+    private void SpawnAudiencePoseNetworkHubIfNeeded(NetworkRunner runner)
+    {
+        if (_audiencePoseNetworkHubObject != null)
+            return;
+
+        if (_audiencePoseNetworkHubPrefab == default)
+        {
+            Debug.LogWarning(
+                "BasicSpawner: AudiencePoseNetworkHub prefab is not assigned."
+            );
+            return;
+        }
+
+        _audiencePoseNetworkHubObject = runner.Spawn(
+            _audiencePoseNetworkHubPrefab,
+            Vector3.zero,
+            Quaternion.identity
+        );
+
+        Debug.Log(
+            "BasicSpawner: AudiencePoseNetworkHub spawned by Actor Host."
+        );
     }
 
     private void SpawnActorAvatarForHost(NetworkRunner runner, PlayerRef player)
