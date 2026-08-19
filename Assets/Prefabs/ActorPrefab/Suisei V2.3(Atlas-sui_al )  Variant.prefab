@@ -4218,7 +4218,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1.02, y: 1.02, z: 1.02}
+  m_LocalScale: {x: 1.07406, y: 1.07406, z: 1.07406}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 3311363413551015922}
@@ -4236,7 +4236,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5574942240849701003}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5b023183069df224080314a560e6e1ff, type: 3}
   m_Name: 
@@ -4505,7 +4505,7 @@ MonoBehaviour:
   _debugDrawInvalidSourceSkeletonColor: {r: 1, g: 0, b: 1, a: 1}
   _skeletonRetargeter:
     HipsScale: {x: 0, y: 0, z: 0}
-    _retargetingBehavior: 1
+    _retargetingBehavior: 3
     _hideLowerBodyWhenUpperBodyTracking: 0
     _hideLegScale: {x: 0, y: 0, z: 0}
     _applyRootScale: 1
@@ -4561,11 +4561,11 @@ MonoBehaviour:
     ModelAsset: {fileID: 4900000, guid: 87370038fff43cb45aacf743d9b307b9, type: 3}
     GuidanceAsset: {fileID: 4900000, guid: 5e470afddd8660540bf4e1c8ff20ead7, type: 3}
     InputProvider: {fileID: 2402913328392791106}
-    RootMotionMode: 1
+    RootMotionMode: 2
     ReferenceTransform: {fileID: 0}
     EnableSynthesizedStandingPose: 0
     UpperBodySource: 0
-    LowerBodySource: 1
+    LowerBodySource: 0
     BlendMode: 1
     BlendFactor: 0
     ManualVelocity: {x: 0, y: 0, z: 0}
@@ -4660,7 +4660,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5574942240849701003}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 13f1ea40dce85ed428082d743c4f66fd, type: 3}
   m_Name: 
