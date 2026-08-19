@@ -6809,7 +6809,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 190327124}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b759cce31b1db2444a4bd13148af9e43, type: 3}
   m_Name: 
@@ -6832,10 +6832,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   grabRole: 2
   rayOrigin: {fileID: 1316534002}
+  controllerRoot: {fileID: 190327127}
+  rayRotationOffset: {x: 0, y: 0, z: 0}
+  rayStartOffset: {x: 0, y: 0, z: 0}
   maxDistance: 5
   interactableLayers:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 16385
+  blockingLayers:
+    serializedVersion: 2
+    m_Bits: 268435456
   grabAction:
     actionPath: /actions/NewSet/in/rightconcl
     needsReinit: 0
@@ -12526,10 +12532,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   grabRole: 2
   rayOrigin: {fileID: 1722171785}
+  controllerRoot: {fileID: 350074490}
+  rayRotationOffset: {x: 0, y: 0, z: 0}
+  rayStartOffset: {x: 0, y: 0, z: 0}
   maxDistance: 5
   interactableLayers:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 16385
+  blockingLayers:
+    serializedVersion: 2
+    m_Bits: 268435456
   grabAction:
     actionPath: /actions/NewSet/in/rightconcl
     needsReinit: 0
@@ -12631,6 +12643,7 @@ GameObject:
   m_Component:
   - component: {fileID: 369691187}
   - component: {fileID: 369691188}
+  - component: {fileID: 2147100001}
   m_Layer: 0
   m_Name: TrackerPoseReader
   m_TagString: Untagged
@@ -12669,6 +12682,22 @@ MonoBehaviour:
   trackerNumber: 0
   trackingOrigin: {fileID: 0}
   showDebugLog: 1
+--- !u!114 &2147100001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 369691186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f1d1e8b8f2b4cf1984100e4516cc9a1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  headTrackerReader: {fileID: 369691188}
+  headSource: {fileID: 1838740840}
+  rightHandSource: {fileID: 190327127}
+  screenClapDetector: {fileID: 2147100103}
 --- !u!43 &374876447
 Mesh:
   m_ObjectHideFlags: 0
@@ -83409,6 +83438,75 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: f5a24268a8c63d64eb1d922cf015239e, type: 3}
+--- !u!1 &2147100100
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2147100101}
+  - component: {fileID: 2147100102}
+  - component: {fileID: 2147100103}
+  m_Layer: 13
+  m_Name: AudienceClapZone
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2147100101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2147100100}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0.14871803, z: -0, w: 0.9888796}
+  m_LocalPosition: {x: -0.213, y: 1.01, z: -1.262}
+  m_LocalScale: {x: 0.85686594, y: 0.42966986, z: 0.23769999}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: -17.105, z: 0}
+--- !u!65 &2147100102
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2147100100}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &2147100103
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2147100100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad5be731e57c4dbbb27f8c68b53a7df2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  clapVolume: {fileID: 2147100102}
+  rightHandSource: {fileID: 190327127}
+  debugLog: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -83432,3 +83530,4 @@ SceneRoots:
   - {fileID: 160055940}
   - {fileID: 1397519603}
   - {fileID: 1838740835}
+  - {fileID: 2147100101}

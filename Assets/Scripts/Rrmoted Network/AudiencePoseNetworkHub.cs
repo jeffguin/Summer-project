@@ -1,8 +1,5 @@
 using Fusion;
 using UnityEngine;
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-using Valve.VR;
-#endif
 
 [DisallowMultipleComponent]
 public sealed class AudiencePoseNetworkHub : NetworkBehaviour
@@ -10,40 +7,49 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
     private const float PoseTimeoutSeconds = 0.75f;
     private const float MaximumPoseDistance = 50f;
 
-    [Header("Audience Sources")]
-    [Tooltip("观众端右手 Vive 手柄物体的名称。")]
-    [SerializeField] private string rightControllerObjectName =
-        "ViveRightController";
-
     [Header("Network")]
-    [Tooltip("每秒发送观众头部和右手姿态的次数。")]
+    [Tooltip("每秒发送观众头部、右手和屏幕接触状态的次数。")]
     [SerializeField, Min(1f)] private float poseSendRate = 30f;
 
     [Header("Actor Visuals")]
     [Tooltip("演员端视觉物体跟随网络姿态的平滑速度。")]
     [SerializeField, Min(0f)] private float smoothingSpeed = 24f;
 
-    private DirectOpenVRTrackerReader audienceHeadReader;
-    private Transform audienceHeadSource;
-    private Transform audienceRightHandSource;
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    private SteamVR_Behaviour_Pose audienceRightHandPose;
-#endif
+    [Tooltip("收到第一帧有效姿态前是否隐藏演员端头手模型。测试阶段建议关闭。")]
+    [SerializeField] private bool hideBeforeFirstValidPose;
+
+    [Tooltip("姿态超过 0.75 秒未更新后是否隐藏模型。测试阶段建议关闭。")]
+    [SerializeField] private bool hideWhenPoseStale;
+
+    private AudiencePoseSourceProvider audienceSourceProvider;
 
     private Transform actorHeadTarget;
     private Transform actorRightHandTarget;
+
     private Vector3 receivedHeadPosition;
     private Quaternion receivedHeadRotation = Quaternion.identity;
     private Vector3 receivedRightHandPosition;
     private Quaternion receivedRightHandRotation = Quaternion.identity;
-    private float lastPoseReceiveTime = float.NegativeInfinity;
+
+    private float lastHeadPoseReceiveTime = float.NegativeInfinity;
+    private float lastRightHandPoseReceiveTime = float.NegativeInfinity;
+    private float lastAudienceStateReceiveTime = float.NegativeInfinity;
+    private float lastAudienceScreenContactTime = float.NegativeInfinity;
+
     private float nextPoseSendTime;
     private float nextSourceResolveTime;
     private float nextTargetResolveTime;
+
     private AudienceVirtualHighFiveController audienceClapHaptic;
-    private bool hasReceivedPose;
-    private bool snapActorTargetsOnNextUpdate;
-    private bool actorTargetsVisible;
+
+    private bool hasEverReceivedHeadPose;
+    private bool hasEverReceivedRightHandPose;
+    private bool receivedHeadPoseValid;
+    private bool receivedRightHandPoseValid;
+    private bool receivedAudienceHandNearScreen;
+    private bool snapHeadTargetOnNextUpdate;
+    private bool snapRightHandTargetOnNextUpdate;
+
     private bool loggedSourcesReady;
     private bool loggedMissingSources;
     private bool loggedTargetsReady;
@@ -54,18 +60,21 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         if (Object.HasStateAuthority)
         {
             TryResolveActorTargets();
-            SetActorTargetVisibility(false);
+            ApplyInitialActorTargetVisibility();
         }
         else
         {
-            TryResolveAudienceSources();
+            TryResolveAudienceSourceProvider();
         }
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
-        if (hasState)
-            SetActorTargetVisibility(false);
+        if (!hasState)
+            return;
+
+        SetTargetVisibility(actorHeadTarget, false);
+        SetTargetVisibility(actorRightHandTarget, false);
     }
 
     private void OnValidate()
@@ -85,13 +94,32 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         }
 
         if (Object.HasStateAuthority)
-        {
             UpdateActorTargets();
-        }
         else
+            SendAudienceStateWhenReady();
+    }
+
+    public bool HasRecentAudienceScreenContact(float graceSeconds)
+    {
+        if (Object == null ||
+            !Object.IsValid ||
+            !Object.HasStateAuthority ||
+            Runner == null ||
+            !Runner.IsRunning)
         {
-            SendAudiencePoseWhenReady();
+            return false;
         }
+
+        float now = Time.realtimeSinceStartup;
+
+        if (now - lastAudienceStateReceiveTime > PoseTimeoutSeconds)
+            return false;
+
+        if (receivedAudienceHandNearScreen)
+            return true;
+
+        return now - lastAudienceScreenContactTime <=
+               Mathf.Max(0f, graceSeconds);
     }
 
     public bool TryNotifyAudienceClap()
@@ -109,7 +137,7 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         return true;
     }
 
-    private void SendAudiencePoseWhenReady()
+    private void SendAudienceStateWhenReady()
     {
         if (Time.unscaledTime < nextPoseSendTime)
             return;
@@ -117,101 +145,68 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         nextPoseSendTime =
             Time.unscaledTime + 1f / Mathf.Max(1f, poseSendRate);
 
-        if (!AreAudienceSourcesReady())
+        if (audienceSourceProvider == null ||
+            !audienceSourceProvider.isActiveAndEnabled)
         {
             if (Time.unscaledTime >= nextSourceResolveTime)
             {
                 nextSourceResolveTime = Time.unscaledTime + 0.5f;
-                TryResolveAudienceSources();
+                TryResolveAudienceSourceProvider();
             }
 
             return;
         }
 
-        RPC_SubmitAudiencePose(
-            audienceHeadSource.position,
-            audienceHeadSource.rotation,
-            audienceRightHandSource.position,
-            audienceRightHandSource.rotation
+        bool headValid = audienceSourceProvider.TryGetHeadPose(
+            out Vector3 headPosition,
+            out Quaternion headRotation
         );
-    }
 
-    private bool AreAudienceSourcesReady()
-    {
-        if (audienceHeadReader == null ||
-            audienceHeadSource == null ||
-            audienceRightHandSource == null ||
-            !audienceHeadReader.HasValidPose)
-        {
-            return false;
-        }
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        return audienceRightHandPose != null &&
-               audienceRightHandPose.poseAction != null &&
-               audienceRightHandPose.isActive &&
-               audienceRightHandPose.isValid &&
-               audienceRightHandPose.poseAction[
-                   audienceRightHandPose.inputSource
-               ].deviceIsConnected;
-#else
-        return false;
-#endif
-    }
-
-    private void TryResolveAudienceSources()
-    {
-        DirectOpenVRTrackerReader[] readers =
-            FindObjectsByType<DirectOpenVRTrackerReader>(
-                FindObjectsInactive.Include,
-                FindObjectsSortMode.None
+        bool rightHandValid =
+            audienceSourceProvider.TryGetRightHandPose(
+                out Vector3 rightHandPosition,
+                out Quaternion rightHandRotation
             );
 
-        audienceHeadReader = null;
-        audienceHeadSource = null;
+        bool rightHandNearScreen =
+            audienceSourceProvider.IsRightHandNearScreen(rightHandValid);
 
-        foreach (DirectOpenVRTrackerReader reader in readers)
-        {
-            if (reader == null || reader.Target == null)
-                continue;
-
-            audienceHeadReader = reader;
-            audienceHeadSource = reader.Target;
-            break;
-        }
-
-        audienceRightHandSource = FindTransformByExactName(
-            rightControllerObjectName
+        RPC_SubmitAudienceState(
+            headValid,
+            headPosition,
+            headRotation,
+            rightHandValid,
+            rightHandPosition,
+            rightHandRotation,
+            rightHandNearScreen
         );
+    }
 
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        audienceRightHandPose = audienceRightHandSource != null
-            ? audienceRightHandSource.GetComponent<SteamVR_Behaviour_Pose>()
-            : null;
-#endif
+    private void TryResolveAudienceSourceProvider()
+    {
+        audienceSourceProvider =
+            FindFirstObjectByType<AudiencePoseSourceProvider>(
+                FindObjectsInactive.Exclude
+            );
 
-        bool foundBoth =
-            audienceHeadSource != null &&
-            audienceRightHandSource != null;
-
-        if (foundBoth && !loggedSourcesReady)
+        if (audienceSourceProvider != null && !loggedSourcesReady)
         {
             loggedSourcesReady = true;
             loggedMissingSources = false;
             Debug.Log(
-                "AudiencePoseNetworkHub: Audience Vive sources bound. " +
-                "Head=" + audienceHeadSource.name +
-                ", RightHand=" + audienceRightHandSource.name + ".",
+                "AudiencePoseNetworkHub: Explicit audience sources bound. " +
+                "Head=" + audienceSourceProvider.HeadSourceName +
+                ", RightHand=" +
+                audienceSourceProvider.RightHandSourceName + ".",
                 this
             );
         }
-        else if (!foundBoth && !loggedMissingSources)
+        else if (audienceSourceProvider == null && !loggedMissingSources)
         {
             loggedMissingSources = true;
             Debug.LogWarning(
-                "AudiencePoseNetworkHub: Waiting for the first " +
-                "DirectOpenVRTrackerReader target and " +
-                rightControllerObjectName + ".",
+                "AudiencePoseNetworkHub: Waiting for an active " +
+                "AudiencePoseSourceProvider.",
                 this
             );
         }
@@ -226,32 +221,61 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
             TryResolveActorTargets();
         }
 
-        bool poseIsFresh =
-            hasReceivedPose &&
-            Time.realtimeSinceStartup - lastPoseReceiveTime <=
-            PoseTimeoutSeconds;
+        float now = Time.realtimeSinceStartup;
 
-        if (!poseIsFresh ||
-            actorHeadTarget == null ||
-            actorRightHandTarget == null)
-        {
-            SetActorTargetVisibility(false);
+        bool headPoseFresh =
+            hasEverReceivedHeadPose &&
+            receivedHeadPoseValid &&
+            now - lastHeadPoseReceiveTime <= PoseTimeoutSeconds;
+
+        bool rightHandPoseFresh =
+            hasEverReceivedRightHandPose &&
+            receivedRightHandPoseValid &&
+            now - lastRightHandPoseReceiveTime <= PoseTimeoutSeconds;
+
+        UpdateActorTarget(
+            actorHeadTarget,
+            headPoseFresh,
+            hasEverReceivedHeadPose,
+            receivedHeadPosition,
+            receivedHeadRotation,
+            ref snapHeadTargetOnNextUpdate
+        );
+
+        UpdateActorTarget(
+            actorRightHandTarget,
+            rightHandPoseFresh,
+            hasEverReceivedRightHandPose,
+            receivedRightHandPosition,
+            receivedRightHandRotation,
+            ref snapRightHandTargetOnNextUpdate
+        );
+    }
+
+    private void UpdateActorTarget(
+        Transform target,
+        bool poseIsFresh,
+        bool hasEverReceivedPose,
+        Vector3 position,
+        Quaternion rotation,
+        ref bool snapOnNextUpdate)
+    {
+        if (target == null)
             return;
-        }
 
-        SetActorTargetVisibility(true);
+        bool shouldHide = !poseIsFresh &&
+            ((!hasEverReceivedPose && hideBeforeFirstValidPose) ||
+             (hasEverReceivedPose && hideWhenPoseStale));
 
-        if (snapActorTargetsOnNextUpdate)
+        SetTargetVisibility(target, !shouldHide);
+
+        if (!poseIsFresh)
+            return;
+
+        if (snapOnNextUpdate)
         {
-            actorHeadTarget.SetPositionAndRotation(
-                receivedHeadPosition,
-                receivedHeadRotation
-            );
-            actorRightHandTarget.SetPositionAndRotation(
-                receivedRightHandPosition,
-                receivedRightHandRotation
-            );
-            snapActorTargetsOnNextUpdate = false;
+            target.SetPositionAndRotation(position, rotation);
+            snapOnNextUpdate = false;
             return;
         }
 
@@ -259,18 +283,7 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
             ? 1f
             : 1f - Mathf.Exp(-smoothingSpeed * Time.deltaTime);
 
-        ApplySmoothedPose(
-            actorHeadTarget,
-            receivedHeadPosition,
-            receivedHeadRotation,
-            blend
-        );
-        ApplySmoothedPose(
-            actorRightHandTarget,
-            receivedRightHandPosition,
-            receivedRightHandRotation,
-            blend
-        );
+        ApplySmoothedPose(target, position, rotation, blend);
     }
 
     private void TryResolveActorTargets()
@@ -315,22 +328,23 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
                 "AudienceHand visual targets bound.",
                 this
             );
+            ApplyInitialActorTargetVisibility();
         }
         else if (!foundBoth && !loggedMissingTargets)
         {
             loggedMissingTargets = true;
             Debug.LogWarning(
                 "AudiencePoseNetworkHub: Waiting for actor-side " +
-                "AudiencePoseVisualTarget components for Head and RightHand.",
+                "AudiencePoseVisualTarget components for Head and " +
+                "RightHand.",
                 this
             );
         }
     }
 
-    private void SetActorTargetVisibility(bool visible)
+    private void ApplyInitialActorTargetVisibility()
     {
-        actorTargetsVisible = visible;
-
+        bool visible = !hideBeforeFirstValidPose;
         SetTargetVisibility(actorHeadTarget, visible);
         SetTargetVisibility(actorRightHandTarget, visible);
     }
@@ -350,37 +364,72 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         TickAligned = false,
         HostMode = RpcHostMode.SourceIsHostPlayer
     )]
-    private void RPC_SubmitAudiencePose(
+    private void RPC_SubmitAudienceState(
+        bool headValid,
         Vector3 headPosition,
         Quaternion headRotation,
+        bool rightHandValid,
         Vector3 rightHandPosition,
         Quaternion rightHandRotation,
+        bool rightHandNearScreen,
         RpcInfo info = default)
     {
         if (Runner == null ||
             info.Source == PlayerRef.None ||
             info.Source == Runner.LocalPlayer ||
-            info.Source != GetOnlyOtherPlayer() ||
-            !IsReasonablePose(headPosition, headRotation) ||
-            !IsReasonablePose(rightHandPosition, rightHandRotation))
+            info.Source != GetOnlyOtherPlayer())
         {
             return;
         }
 
-        bool poseWasFresh =
-            hasReceivedPose &&
-            Time.realtimeSinceStartup - lastPoseReceiveTime <=
-            PoseTimeoutSeconds;
+        if (headValid && !IsReasonablePose(headPosition, headRotation))
+            headValid = false;
 
-        receivedHeadPosition = headPosition;
-        receivedHeadRotation = headRotation.normalized;
-        receivedRightHandPosition = rightHandPosition;
-        receivedRightHandRotation = rightHandRotation.normalized;
-        lastPoseReceiveTime = Time.realtimeSinceStartup;
-        hasReceivedPose = true;
+        if (rightHandValid &&
+            !IsReasonablePose(rightHandPosition, rightHandRotation))
+        {
+            rightHandValid = false;
+        }
 
-        if (!poseWasFresh || !actorTargetsVisible)
-            snapActorTargetsOnNextUpdate = true;
+        float now = Time.realtimeSinceStartup;
+        lastAudienceStateReceiveTime = now;
+        receivedAudienceHandNearScreen =
+            rightHandValid && rightHandNearScreen;
+
+        if (receivedAudienceHandNearScreen)
+            lastAudienceScreenContactTime = now;
+
+        receivedHeadPoseValid = headValid;
+        if (headValid)
+        {
+            bool wasFresh =
+                hasEverReceivedHeadPose &&
+                now - lastHeadPoseReceiveTime <= PoseTimeoutSeconds;
+
+            receivedHeadPosition = headPosition;
+            receivedHeadRotation = headRotation.normalized;
+            lastHeadPoseReceiveTime = now;
+            hasEverReceivedHeadPose = true;
+
+            if (!wasFresh)
+                snapHeadTargetOnNextUpdate = true;
+        }
+
+        receivedRightHandPoseValid = rightHandValid;
+        if (rightHandValid)
+        {
+            bool wasFresh =
+                hasEverReceivedRightHandPose &&
+                now - lastRightHandPoseReceiveTime <= PoseTimeoutSeconds;
+
+            receivedRightHandPosition = rightHandPosition;
+            receivedRightHandRotation = rightHandRotation.normalized;
+            lastRightHandPoseReceiveTime = now;
+            hasEverReceivedRightHandPose = true;
+
+            if (!wasFresh)
+                snapRightHandTargetOnNextUpdate = true;
+        }
     }
 
     [Rpc(
@@ -391,8 +440,6 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
     )]
     private void RPC_PlayAudienceClapHaptic()
     {
-        // The Actor Host validates the two-hand contact. Only a proxy (the
-        // Windows audience client) should play the Vive controller haptic.
         if (Object == null || Object.HasStateAuthority)
             return;
 
@@ -436,22 +483,6 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         }
 
         return count == 1 ? result : PlayerRef.None;
-    }
-
-    private static Transform FindTransformByExactName(string objectName)
-    {
-        Transform[] transforms = FindObjectsByType<Transform>(
-            FindObjectsInactive.Include,
-            FindObjectsSortMode.None
-        );
-
-        foreach (Transform candidate in transforms)
-        {
-            if (candidate != null && candidate.name == objectName)
-                return candidate;
-        }
-
-        return null;
     }
 
     private static void ApplySmoothedPose(
