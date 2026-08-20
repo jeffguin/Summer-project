@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 [DefaultExecutionOrder(300)]
@@ -5,52 +6,57 @@ using UnityEngine;
 [RequireComponent(typeof(BoxCollider))]
 public sealed class ClapInteractionZone : MonoBehaviour
 {
-    [Header("Clap Volume")]
-    [Tooltip("演员手和网络同步后的观众右手共同使用的演员端屏幕区域。")]
+    [Header("Audience-following Trigger")]
+    [Tooltip("跟随演员端 AudienceHand 移动的拍手触发区。尺寸直接在 BoxCollider 中修改。")]
     [SerializeField] private BoxCollider clapVolume;
 
-    [Tooltip("两次拍手触发之间至少间隔多少秒。触发后还必须先离开区域才能再次触发。")]
-    [SerializeField, Min(0f)] private float cooldownSeconds = 5f;
-
-    [Tooltip("在 claphand 前后额外允许的接触深度（米）。手掌中心和演员端 AudienceHand 的中心点无法真正穿入实体屏幕，因此需要保留容差。")]
-    [SerializeField, Min(0f)] private float contactDepthToleranceMeters =
-        0.20f;
-
-    [Header("Tracked Hands")]
-    [Tooltip("可选。留空时自动使用本机演员 Avatar 的左手骨骼。")]
-    [SerializeField] private Transform actorLeftHand;
-
-    [Tooltip("可选。留空时自动使用本机演员 Avatar 的右手骨骼。")]
-    [SerializeField] private Transform actorRightHand;
-
-    [Header("Audience Visual")]
     [Tooltip("演员端用于显示观众右手的 AudienceHand。留空时自动寻找 Target Kind 为 RightHand 的 AudiencePoseVisualTarget。")]
     [SerializeField] private Transform audienceRightHandVisual;
+
+    [Tooltip("触发区是否同时跟随 AudienceHand 的旋转。")]
+    [SerializeField] private bool followAudienceHandRotation = true;
+
+    [Tooltip("触发区相对 AudienceHand 的本地位置偏移。")]
+    [SerializeField] private Vector3 localPositionOffset;
+
+    [Header("Tracked Actor Hands")]
+    [Tooltip("演员本地左手掌。当前场景绑定 OVR Rig 的 l_palm_center_marker。")]
+    [SerializeField] private Transform actorLeftHand;
+
+    [Tooltip("演员本地右手掌。当前场景绑定 OVR Rig 的 r_palm_center_marker。")]
+    [SerializeField] private Transform actorRightHand;
+
+    [Tooltip("运行时添加到演员手掌上的球形碰撞探针半径（米）。")]
+    [SerializeField, Min(0.005f)]
+    private float actorHandProbeRadius = 0.04f;
 
     [Header("Diagnostics")]
     [SerializeField] private bool debugLog;
 
+    private const string HandProbeObjectName = "ClapHandProbe";
+
+    private readonly HashSet<SphereCollider> actorHandsInside =
+        new HashSet<SphereCollider>();
+
     private AudiencePoseNetworkHub poseNetworkHub;
+    private Rigidbody triggerBody;
+    private SphereCollider leftHandProbe;
+    private SphereCollider rightHandProbe;
     private float nextResolveTime;
-    private float nextAllowedClapTime;
-    private bool waitingForExitAfterClap;
     private bool loggedReady;
-    private bool previousActorHandInside;
-    private bool previousAudienceHandInside;
+    private bool triggerAvailable;
 
     private void Awake()
     {
-        if (clapVolume == null)
-            clapVolume = GetComponent<BoxCollider>();
-
+        EnsureTriggerPhysics();
+        SetTriggerAvailable(false);
         ResolveRuntimeReferences();
     }
 
     private void OnValidate()
     {
-        cooldownSeconds = Mathf.Max(0f, cooldownSeconds);
-        contactDepthToleranceMeters =
-            Mathf.Max(0f, contactDepthToleranceMeters);
+        actorHandProbeRadius =
+            Mathf.Max(0.005f, actorHandProbeRadius);
 
         if (clapVolume == null)
             clapVolume = GetComponent<BoxCollider>();
@@ -59,7 +65,7 @@ public sealed class ClapInteractionZone : MonoBehaviour
             clapVolume.isTrigger = true;
     }
 
-    private void Update()
+    private void FixedUpdate()
     {
         if (!ReferencesAreReady() &&
             Time.unscaledTime >= nextResolveTime)
@@ -68,88 +74,131 @@ public sealed class ClapInteractionZone : MonoBehaviour
             ResolveRuntimeReferences();
         }
 
+        RemoveUnavailableHands();
+
         if (!ReferencesAreReady())
         {
-            waitingForExitAfterClap = false;
+            SetTriggerAvailable(false);
+            ReportDetectionState(
+                zoneReady: false,
+                audiencePoseFresh: false
+            );
             return;
         }
 
-        bool actorHandInside =
-            IsActiveHandInside(actorLeftHand) ||
-            IsActiveHandInside(actorRightHand);
-        bool audienceHandPoseIsFresh =
-            poseNetworkHub.TryGetRecentAudienceRightHandPosition(
-                out _
-            );
-        bool audienceHandInside =
-            audienceHandPoseIsFresh &&
-            IsActiveHandInside(audienceRightHandVisual);
+        bool audiencePoseFresh =
+            poseNetworkHub.TryGetRecentAudienceRightHandPosition(out _);
+        bool audienceVisualAvailable =
+            audienceRightHandVisual.gameObject.activeInHierarchy;
+        bool shouldEnableTrigger =
+            audiencePoseFresh && audienceVisualAvailable;
 
-        float now = Time.unscaledTime;
-        bool clapConditionMet =
-            actorHandInside && audienceHandInside;
+        if (shouldEnableTrigger)
+            FollowAudienceHand();
 
-        poseNetworkHub.ReportClapDetectionState(
-            zoneReady: true,
-            actorHandInside,
-            audienceHandInside,
-            audienceHandPoseIsFresh
+        SetTriggerAvailable(shouldEnableTrigger);
+        ReportDetectionState(
+            zoneReady: shouldEnableTrigger,
+            audiencePoseFresh
         );
+    }
 
-        LogContactStateChanges(actorHandInside, audienceHandInside);
+    private void OnTriggerEnter(Collider other)
+    {
+        SphereCollider probe = other as SphereCollider;
 
-        if (!clapConditionMet)
-            waitingForExitAfterClap = false;
-
-        if (clapConditionMet &&
-            !waitingForExitAfterClap &&
-            now >= nextAllowedClapTime &&
-            poseNetworkHub.TryNotifyAudienceClap())
+        if (probe == null ||
+            (probe != leftHandProbe && probe != rightHandProbe))
         {
-            waitingForExitAfterClap = true;
-            nextAllowedClapTime =
-                now + cooldownSeconds;
+            return;
+        }
 
-            if (debugLog)
-            {
-                Debug.Log(
-                    "[ClapInteractionZone] Actor hand and synchronized " +
-                    "actor-side AudienceHand visual are currently in " +
-                    "the same claphand volume. " +
-                    "Audience haptic requested.",
-                    this
-                );
-            }
+        bool wasEmpty = actorHandsInside.Count == 0;
+        actorHandsInside.Add(probe);
+
+        if (debugLog)
+        {
+            Debug.Log(
+                "[ClapInteractionZone] Actor hand entered " +
+                "AudienceHand trigger. Hand=" +
+                GetProbeHandName(probe) + ".",
+                this
+            );
+        }
+
+        if (!wasEmpty ||
+            actorHandsInside.Count != 1 ||
+            !CanTriggerClap())
+        {
+            return;
+        }
+
+        if (!poseNetworkHub.TryNotifyAudienceClap())
+            return;
+
+        if (debugLog)
+        {
+            Debug.Log(
+                "[ClapInteractionZone] OnTriggerEnter requested " +
+                "AudienceHand clap haptic.",
+                this
+            );
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        SphereCollider probe = other as SphereCollider;
+
+        if (probe == null || !actorHandsInside.Remove(probe))
+            return;
+
+        if (debugLog)
+        {
+            Debug.Log(
+                "[ClapInteractionZone] Actor hand exited " +
+                "AudienceHand trigger. RemainingHands=" +
+                actorHandsInside.Count + ".",
+                this
+            );
         }
     }
 
     private void OnDisable()
     {
-        waitingForExitAfterClap = false;
+        actorHandsInside.Clear();
+        triggerAvailable = false;
 
-        if (poseNetworkHub != null)
-        {
-            poseNetworkHub.ReportClapDetectionState(
-                zoneReady: false,
-                actorHandInside: false,
-                audienceHandInside: false,
-                audienceHandPoseIsFresh: false
-            );
-        }
+        if (clapVolume != null)
+            clapVolume.enabled = false;
+
+        ReportDetectionState(
+            zoneReady: false,
+            audiencePoseFresh: false
+        );
+    }
+
+    private bool CanTriggerClap()
+    {
+        return triggerAvailable &&
+               poseNetworkHub != null &&
+               poseNetworkHub.TryGetRecentAudienceRightHandPosition(
+                   out _
+               );
     }
 
     private bool ReferencesAreReady()
     {
         return clapVolume != null &&
-               (actorLeftHand != null || actorRightHand != null) &&
+               triggerBody != null &&
                poseNetworkHub != null &&
-               audienceRightHandVisual != null;
+               audienceRightHandVisual != null &&
+               (leftHandProbe != null || rightHandProbe != null);
     }
 
     private void ResolveRuntimeReferences()
     {
-        if (clapVolume == null)
-            clapVolume = GetComponent<BoxCollider>();
+        EnsureTriggerPhysics();
 
         if (poseNetworkHub == null)
         {
@@ -164,6 +213,15 @@ public sealed class ClapInteractionZone : MonoBehaviour
         if (audienceRightHandVisual == null)
             ResolveAudienceRightHandVisual();
 
+        leftHandProbe = EnsureActorHandProbe(
+            actorLeftHand,
+            leftHandProbe
+        );
+        rightHandProbe = EnsureActorHandProbe(
+            actorRightHand,
+            rightHandProbe
+        );
+
         if (ReferencesAreReady() && !loggedReady)
         {
             loggedReady = true;
@@ -171,13 +229,73 @@ public sealed class ClapInteractionZone : MonoBehaviour
             if (debugLog)
             {
                 Debug.Log(
-                    "[ClapInteractionZone] Shared clap volume, local " +
-                    "actor hand, actor-side AudienceHand visual and " +
-                    "audience pose network hub are ready.",
+                    "[ClapInteractionZone] AudienceHand-following " +
+                    "trigger and actor OVR hand probes are ready.",
                     this
                 );
             }
         }
+    }
+
+    private void EnsureTriggerPhysics()
+    {
+        if (clapVolume == null)
+            clapVolume = GetComponent<BoxCollider>();
+
+        if (clapVolume != null)
+            clapVolume.isTrigger = true;
+
+        if (triggerBody == null)
+            triggerBody = GetComponent<Rigidbody>();
+
+        if (triggerBody == null)
+            triggerBody = gameObject.AddComponent<Rigidbody>();
+
+        triggerBody.useGravity = false;
+        triggerBody.isKinematic = true;
+        triggerBody.detectCollisions = true;
+        triggerBody.interpolation = RigidbodyInterpolation.Interpolate;
+        triggerBody.collisionDetectionMode =
+            CollisionDetectionMode.ContinuousSpeculative;
+    }
+
+    private SphereCollider EnsureActorHandProbe(
+        Transform hand,
+        SphereCollider currentProbe)
+    {
+        if (hand == null)
+            return null;
+
+        SphereCollider probe = currentProbe;
+        if (probe == null || probe.transform.parent != hand)
+        {
+            Transform probeTransform = hand.Find(HandProbeObjectName);
+
+            if (probeTransform == null)
+            {
+                GameObject probeObject = new GameObject(
+                    HandProbeObjectName
+                );
+                probeTransform = probeObject.transform;
+                probeTransform.SetParent(hand, false);
+                probeObject.layer = hand.gameObject.layer;
+            }
+
+            probe = probeTransform.GetComponent<SphereCollider>();
+
+            if (probe == null)
+            {
+                probe = probeTransform.gameObject.AddComponent<
+                    SphereCollider
+                >();
+            }
+        }
+
+        probe.isTrigger = false;
+        probe.center = Vector3.zero;
+        probe.radius = actorHandProbeRadius;
+        probe.enabled = true;
+        return probe;
     }
 
     private void ResolveAudienceRightHandVisual()
@@ -200,34 +318,6 @@ public sealed class ClapInteractionZone : MonoBehaviour
             audienceRightHandVisual = target.transform;
             return;
         }
-    }
-
-    private void LogContactStateChanges(
-        bool actorHandInside,
-        bool audienceHandInside)
-    {
-        if (debugLog &&
-            actorHandInside != previousActorHandInside)
-        {
-            Debug.Log(
-                "[ClapInteractionZone] Actor hand inside=" +
-                actorHandInside + ".",
-                this
-            );
-        }
-
-        if (debugLog &&
-            audienceHandInside != previousAudienceHandInside)
-        {
-            Debug.Log(
-                "[ClapInteractionZone] AudienceHand inside=" +
-                audienceHandInside + ".",
-                this
-            );
-        }
-
-        previousActorHandInside = actorHandInside;
-        previousAudienceHandInside = audienceHandInside;
     }
 
     private void ResolveLocalActorHands()
@@ -275,28 +365,67 @@ public sealed class ClapInteractionZone : MonoBehaviour
         }
     }
 
-    private bool IsActiveHandInside(Transform hand)
+    private void FollowAudienceHand()
     {
-        return hand != null &&
-               hand.gameObject.activeInHierarchy &&
-               IsPointInsideVolume(hand.position);
+        Vector3 targetPosition =
+            audienceRightHandVisual.TransformPoint(localPositionOffset);
+        Quaternion targetRotation = followAudienceHandRotation
+            ? audienceRightHandVisual.rotation
+            : Quaternion.identity;
+
+        if (!triggerAvailable)
+        {
+            triggerBody.position = targetPosition;
+            triggerBody.rotation = targetRotation;
+            return;
+        }
+
+        triggerBody.MovePosition(targetPosition);
+        triggerBody.MoveRotation(targetRotation);
     }
 
-    private bool IsPointInsideVolume(Vector3 worldPosition)
+    private void SetTriggerAvailable(bool available)
     {
-        Vector3 localPoint =
-            clapVolume.transform.InverseTransformPoint(worldPosition) -
-            clapVolume.center;
-        Vector3 halfSize = clapVolume.size * 0.5f;
-        float depthScale =
-            Mathf.Abs(clapVolume.transform.lossyScale.z);
-        float localDepthTolerance = depthScale > 0.0001f
-            ? contactDepthToleranceMeters / depthScale
-            : 0f;
+        triggerAvailable = available;
 
-        return Mathf.Abs(localPoint.x) <= halfSize.x &&
-               Mathf.Abs(localPoint.y) <= halfSize.y &&
-               Mathf.Abs(localPoint.z) <=
-                   halfSize.z + localDepthTolerance;
+        if (clapVolume != null && clapVolume.enabled != available)
+            clapVolume.enabled = available;
+
+        if (!available)
+            actorHandsInside.Clear();
+    }
+
+    private void RemoveUnavailableHands()
+    {
+        actorHandsInside.RemoveWhere(
+            probe =>
+                probe == null ||
+                !probe.enabled ||
+                !probe.gameObject.activeInHierarchy
+        );
+    }
+
+    private static string GetProbeHandName(SphereCollider probe)
+    {
+        if (probe == null)
+            return "MissingHand";
+
+        Transform parent = probe.transform.parent;
+        return parent != null ? parent.name : probe.name;
+    }
+
+    private void ReportDetectionState(
+        bool zoneReady,
+        bool audiencePoseFresh)
+    {
+        if (poseNetworkHub == null)
+            return;
+
+        poseNetworkHub.ReportClapDetectionState(
+            zoneReady,
+            actorHandInside: actorHandsInside.Count > 0,
+            audienceHandInside: zoneReady,
+            audienceHandPoseIsFresh: audiencePoseFresh
+        );
     }
 }

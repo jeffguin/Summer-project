@@ -112650,7 +112650,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
+  m_Size: {x: 0.22, y: 0.22, z: 0.22}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!23 &1749669538
 MeshRenderer:
@@ -112659,7 +112659,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1749669536}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 1
   m_DynamicOccludee: 1
@@ -112715,7 +112715,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.37086672, z: -0, w: 0.92868614}
   m_LocalPosition: {x: -0.132, y: 1.01, z: -1.56}
-  m_LocalScale: {x: 0.85686594, y: 0.42966986, z: 0.13998866}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -112733,11 +112733,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   clapVolume: {fileID: 1749669537}
-  cooldownSeconds: 5
-  contactDepthToleranceMeters: 0.2
+  audienceRightHandVisual: {fileID: 9026575548846156353}
+  followAudienceHandRotation: 1
+  localPositionOffset: {x: 0, y: 0, z: 0}
   actorLeftHand: {fileID: 1248840019}
   actorRightHand: {fileID: 1248840018}
-  audienceRightHandVisual: {fileID: 9026575548846156353}
+  actorHandProbeRadius: 0.04
   debugLog: 1
 --- !u!1 &1756441417
 GameObject:
