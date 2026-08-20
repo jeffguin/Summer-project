@@ -4236,7 +4236,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5574942240849701003}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5b023183069df224080314a560e6e1ff, type: 3}
   m_Name: 
@@ -4522,9 +4522,9 @@ MonoBehaviour:
       _leftHand: {fileID: 0}
       _rightHand: {fileID: 0}
       _moveHandBackToOriginalPosition: 1
-      _maxDisplacementDistance: 0
+      _maxDisplacementDistance: 0.05
   _targetProcessorContainers: []
-  _ownership: 0
+  _ownership: 1
   _compressionType: 0
   _useDeltaCompression: 1
   _useSyncInterval: 1
@@ -4561,7 +4561,7 @@ MonoBehaviour:
     ModelAsset: {fileID: 4900000, guid: 87370038fff43cb45aacf743d9b307b9, type: 3}
     GuidanceAsset: {fileID: 4900000, guid: 5e470afddd8660540bf4e1c8ff20ead7, type: 3}
     InputProvider: {fileID: 2402913328392791106}
-    RootMotionMode: 2
+    RootMotionMode: 1
     ReferenceTransform: {fileID: 0}
     EnableSynthesizedStandingPose: 0
     UpperBodySource: 0
