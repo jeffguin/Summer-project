@@ -6,17 +6,17 @@ using UnityEngine;
 public sealed class ClapInteractionZone : MonoBehaviour
 {
     [Header("Clap Volume")]
-    [Tooltip("演员手需要进入的演员端屏幕区域。观众接触由观众端本地检测。")]
+    [Tooltip("演员手和网络同步后的观众右手共同使用的演员端屏幕区域。")]
     [SerializeField] private BoxCollider clapVolume;
 
     [Tooltip("两次拍手触发之间至少间隔多少秒。触发后还必须先离开区域才能再次触发。")]
     [SerializeField, Min(0f)] private float cooldownSeconds = 5f;
 
-    [Tooltip("允许观众和演员先后接近屏幕的最大时间差，用于吸收网络延迟。")]
+    [Tooltip("允许观众手和演员手先后进入区域的最大时间差，用于吸收动作及网络延迟。")]
     [SerializeField, Min(0f)] private float synchronizationGraceSeconds =
         0.4f;
 
-    [Header("Optional Actor Hand Overrides")]
+    [Header("Tracked Hands")]
     [Tooltip("可选。留空时自动使用本机演员 Avatar 的左手骨骼。")]
     [SerializeField] private Transform actorLeftHand;
 
@@ -29,8 +29,12 @@ public sealed class ClapInteractionZone : MonoBehaviour
     private AudiencePoseNetworkHub poseNetworkHub;
     private float nextResolveTime;
     private float nextAllowedClapTime;
+    private float lastActorContactTime = float.NegativeInfinity;
+    private float lastAudienceContactTime = float.NegativeInfinity;
     private bool clapConditionWasMet;
     private bool loggedReady;
+    private bool previousActorHandInside;
+    private bool previousAudienceHandInside;
 
     private void Awake()
     {
@@ -65,35 +69,53 @@ public sealed class ClapInteractionZone : MonoBehaviour
         if (!ReferencesAreReady())
         {
             clapConditionWasMet = false;
+            lastActorContactTime = float.NegativeInfinity;
+            lastAudienceContactTime = float.NegativeInfinity;
             return;
         }
 
         bool actorHandInside =
             IsActiveHandInside(actorLeftHand) ||
             IsActiveHandInside(actorRightHand);
-
-        bool audienceHandNearScreen =
-            poseNetworkHub.HasRecentAudienceScreenContact(
-                synchronizationGraceSeconds
+        bool audienceHandPoseIsFresh =
+            poseNetworkHub.TryGetRecentAudienceRightHandPosition(
+                out Vector3 audienceHandPosition
             );
+        bool audienceHandInside =
+            audienceHandPoseIsFresh &&
+            IsPointInsideVolume(audienceHandPosition);
+
+        float now = Time.unscaledTime;
+
+        if (actorHandInside)
+            lastActorContactTime = now;
+        if (audienceHandInside)
+            lastAudienceContactTime = now;
+
+        bool actorContactIsRecent =
+            now - lastActorContactTime <= synchronizationGraceSeconds;
+        bool audienceContactIsRecent =
+            now - lastAudienceContactTime <= synchronizationGraceSeconds;
 
         bool clapConditionMet =
-            audienceHandNearScreen && actorHandInside;
+            actorContactIsRecent && audienceContactIsRecent;
+
+        LogContactStateChanges(actorHandInside, audienceHandInside);
 
         if (clapConditionMet &&
             !clapConditionWasMet &&
-            Time.unscaledTime >= nextAllowedClapTime &&
+            now >= nextAllowedClapTime &&
             poseNetworkHub.TryNotifyAudienceClap())
         {
             nextAllowedClapTime =
-                Time.unscaledTime + cooldownSeconds;
+                now + cooldownSeconds;
 
             if (debugLog)
             {
                 Debug.Log(
-                    "[ClapInteractionZone] Actor hand entered the actor " +
-                    "screen zone while the audience reported local " +
-                    "screen contact. Audience haptic requested.",
+                    "[ClapInteractionZone] Actor hand and synchronized " +
+                    "AudienceHand entered the same claphand volume. " +
+                    "Audience haptic requested.",
                     this
                 );
             }
@@ -131,12 +153,40 @@ public sealed class ClapInteractionZone : MonoBehaviour
             if (debugLog)
             {
                 Debug.Log(
-                    "[ClapInteractionZone] Clap volume, local actor hand " +
-                    "and audience screen-contact network state are ready.",
+                    "[ClapInteractionZone] Shared clap volume, local " +
+                    "actor hand and audience pose network hub are ready.",
                     this
                 );
             }
         }
+    }
+
+    private void LogContactStateChanges(
+        bool actorHandInside,
+        bool audienceHandInside)
+    {
+        if (debugLog &&
+            actorHandInside != previousActorHandInside)
+        {
+            Debug.Log(
+                "[ClapInteractionZone] Actor hand inside=" +
+                actorHandInside + ".",
+                this
+            );
+        }
+
+        if (debugLog &&
+            audienceHandInside != previousAudienceHandInside)
+        {
+            Debug.Log(
+                "[ClapInteractionZone] AudienceHand inside=" +
+                audienceHandInside + ".",
+                this
+            );
+        }
+
+        previousActorHandInside = actorHandInside;
+        previousAudienceHandInside = audienceHandInside;
     }
 
     private void ResolveLocalActorHands()

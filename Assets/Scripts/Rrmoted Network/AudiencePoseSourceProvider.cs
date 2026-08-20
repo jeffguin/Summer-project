@@ -10,7 +10,6 @@ public sealed class AudiencePoseSourceProvider : MonoBehaviour
     [SerializeField] private DirectOpenVRTrackerReader headTrackerReader;
     [SerializeField] private Transform headSource;
     [SerializeField] private Transform rightHandSource;
-    [SerializeField] private AudienceScreenClapDetector screenClapDetector;
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     private SteamVR_Behaviour_Pose rightHandPose;
@@ -88,13 +87,6 @@ public sealed class AudiencePoseSourceProvider : MonoBehaviour
 #else
         return false;
 #endif
-    }
-
-    public bool IsRightHandNearScreen(bool rightHandPoseIsValid)
-    {
-        return rightHandPoseIsValid &&
-               screenClapDetector != null &&
-               screenClapDetector.IsHandInside;
     }
 
     private void ResolveCachedReferences()

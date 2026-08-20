@@ -80794,7 +80794,6 @@ MonoBehaviour:
   headTrackerReader: {fileID: 2116271818}
   headSource: {fileID: 195134167}
   rightHandSource: {fileID: 190327127}
-  screenClapDetector: {fileID: 2147100103}
 --- !u!1 &2126058782
 GameObject:
   m_ObjectHideFlags: 0
@@ -81503,7 +81502,7 @@ MonoBehaviour:
   hapticDuration: 0.065
   hapticFrequency: 150
   hapticAmplitude: 0.8
-  debugLog: 0
+  debugLog: 1
 --- !u!114 &2147100001
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -81519,7 +81518,6 @@ MonoBehaviour:
   headTrackerReader: {fileID: 369691188}
   headSource: {fileID: 1838740840}
   rightHandSource: {fileID: 190327127}
-  screenClapDetector: {fileID: 2147100103}
 --- !u!1 &2147100100
 GameObject:
   m_ObjectHideFlags: 0
@@ -81537,7 +81535,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &2147100101
 Transform:
   m_ObjectHideFlags: 0

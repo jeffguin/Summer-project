@@ -33,8 +33,6 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
 
     private float lastHeadPoseReceiveTime = float.NegativeInfinity;
     private float lastRightHandPoseReceiveTime = float.NegativeInfinity;
-    private float lastAudienceStateReceiveTime = float.NegativeInfinity;
-    private float lastAudienceScreenContactTime = float.NegativeInfinity;
 
     private float nextPoseSendTime;
     private float nextSourceResolveTime;
@@ -46,7 +44,6 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
     private bool hasEverReceivedRightHandPose;
     private bool receivedHeadPoseValid;
     private bool receivedRightHandPoseValid;
-    private bool receivedAudienceHandNearScreen;
     private bool snapHeadTargetOnNextUpdate;
     private bool snapRightHandTargetOnNextUpdate;
 
@@ -99,27 +96,26 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
             SendAudienceStateWhenReady();
     }
 
-    public bool HasRecentAudienceScreenContact(float graceSeconds)
+    public bool TryGetRecentAudienceRightHandPosition(
+        out Vector3 position)
     {
+        position = default;
+
         if (Object == null ||
             !Object.IsValid ||
             !Object.HasStateAuthority ||
             Runner == null ||
-            !Runner.IsRunning)
+            !Runner.IsRunning ||
+            !hasEverReceivedRightHandPose ||
+            !receivedRightHandPoseValid ||
+            Time.realtimeSinceStartup - lastRightHandPoseReceiveTime >
+                PoseTimeoutSeconds)
         {
             return false;
         }
 
-        float now = Time.realtimeSinceStartup;
-
-        if (now - lastAudienceStateReceiveTime > PoseTimeoutSeconds)
-            return false;
-
-        if (receivedAudienceHandNearScreen)
-            return true;
-
-        return now - lastAudienceScreenContactTime <=
-               Mathf.Max(0f, graceSeconds);
+        position = receivedRightHandPosition;
+        return true;
     }
 
     public bool TryNotifyAudienceClap()
@@ -168,17 +164,13 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
                 out Quaternion rightHandRotation
             );
 
-        bool rightHandNearScreen =
-            audienceSourceProvider.IsRightHandNearScreen(rightHandValid);
-
         RPC_SubmitAudienceState(
             headValid,
             headPosition,
             headRotation,
             rightHandValid,
             rightHandPosition,
-            rightHandRotation,
-            rightHandNearScreen
+            rightHandRotation
         );
     }
 
@@ -371,7 +363,6 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         bool rightHandValid,
         Vector3 rightHandPosition,
         Quaternion rightHandRotation,
-        bool rightHandNearScreen,
         RpcInfo info = default)
     {
         if (Runner == null ||
@@ -392,13 +383,6 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         }
 
         float now = Time.realtimeSinceStartup;
-        lastAudienceStateReceiveTime = now;
-        receivedAudienceHandNearScreen =
-            rightHandValid && rightHandNearScreen;
-
-        if (receivedAudienceHandNearScreen)
-            lastAudienceScreenContactTime = now;
-
         receivedHeadPoseValid = headValid;
         if (headValid)
         {
