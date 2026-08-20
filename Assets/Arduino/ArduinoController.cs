@@ -43,7 +43,7 @@ public class ArduinoController : MonoBehaviour
     public bool canRotate = false;
 
     [Header("Into Virtual Cooldown")]
-    [SerializeField] private float intoVirtualCooldown = 5f;
+    [SerializeField] private float intoVirtualCooldown = 10f;
     [SerializeField] private bool canIntoVirtual = true;
 
 
@@ -161,7 +161,7 @@ public class ArduinoController : MonoBehaviour
         {
             Debug.Log("Requesting NETWORK Sweet spawn.");
 
-            networkSync.RequestActorFunctionFromHardwarePeer();
+            networkSync.RequestSpawnItemFromHardwarePeer();
             return;
         }
 

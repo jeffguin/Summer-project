@@ -1,12 +1,10 @@
 using Fusion;
 using UnityEngine;
-using UnityEngine.Events;
 
 [RequireComponent(typeof(NetworkObject))]
 public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
 {
     [SerializeField] private ArduinoController controller;
-    [SerializeField] private UnityEvent actorFunction;
 
     public bool IsNetworkSpawned => Object != null && Object.IsValid;
 
@@ -47,45 +45,6 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
         {
             controller.ConfigureNetworkPeer(false);
         }
-    }
-
-
-    public void RequestActorFunctionFromHardwarePeer()
-    {
-        if (!IsNetworkSpawned)
-            return;
-
-        if (Object.HasStateAuthority)
-        {
-            RunActorFunctionFromStateAuthority();
-            return;
-        }
-
-        RPC_RequestActorFunctionFromHardwarePeer();
-    }
-
-
-    [Rpc(
-        RpcSources.All,
-        RpcTargets.StateAuthority,
-        Channel = RpcChannel.Reliable)]
-    private void RPC_RequestActorFunctionFromHardwarePeer(RpcInfo info = default)
-    {
-        Debug.Log(
-            $"[ArduinoDropDiscNetworkSync] {name}: " +
-            $"Actor function requested by hardware peer {info.Source}."
-        );
-
-        RunActorFunctionFromStateAuthority();
-    }
-
-
-    private void RunActorFunctionFromStateAuthority()
-    {
-        if (!CanRunAuthoritativeAction())
-            return;
-
-        actorFunction?.Invoke();
     }
 
 
