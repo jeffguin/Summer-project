@@ -8,7 +8,7 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
     private const float MaximumPoseDistance = 50f;
 
     [Header("Network")]
-    [Tooltip("每秒发送观众头部、右手和屏幕接触状态的次数。")]
+    [Tooltip("每秒发送观众头部和右手姿态的次数。")]
     [SerializeField, Min(1f)] private float poseSendRate = 30f;
 
     [Header("Actor Visuals")]
@@ -40,6 +40,12 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
 
     private AudienceVirtualHighFiveController audienceClapHaptic;
 
+    [Networked] private NetworkBool ClapZoneReady { get; set; }
+    [Networked] private NetworkBool ActorHandInsideClapZone { get; set; }
+    [Networked] private NetworkBool AudienceHandInsideClapZone { get; set; }
+    [Networked] private NetworkBool AudienceHandPoseFresh { get; set; }
+    [Networked] private int ClapEventSequence { get; set; }
+
     private bool hasEverReceivedHeadPose;
     private bool hasEverReceivedRightHandPose;
     private bool receivedHeadPoseValid;
@@ -51,6 +57,13 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
     private bool loggedMissingSources;
     private bool loggedTargetsReady;
     private bool loggedMissingTargets;
+    private bool clapDiagnosticsInitialized;
+    private bool previousClapZoneReady;
+    private bool previousActorHandInsideClapZone;
+    private bool previousAudienceHandInsideClapZone;
+    private bool previousAudienceHandPoseFresh;
+    private int lastObservedClapEventSequence;
+    private int lastPlayedClapEventSequence;
 
     public override void Spawned()
     {
@@ -61,7 +74,10 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         }
         else
         {
+            lastObservedClapEventSequence = ClapEventSequence;
+            lastPlayedClapEventSequence = ClapEventSequence;
             TryResolveAudienceSourceProvider();
+            ObserveActorClapState(forceLog: true);
         }
     }
 
@@ -91,9 +107,35 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         }
 
         if (Object.HasStateAuthority)
+        {
             UpdateActorTargets();
+        }
         else
+        {
             SendAudienceStateWhenReady();
+            ObserveActorClapState(forceLog: false);
+        }
+    }
+
+    public void ReportClapDetectionState(
+        bool zoneReady,
+        bool actorHandInside,
+        bool audienceHandInside,
+        bool audienceHandPoseIsFresh)
+    {
+        if (Object == null ||
+            !Object.IsValid ||
+            !Object.HasStateAuthority ||
+            Runner == null ||
+            !Runner.IsRunning)
+        {
+            return;
+        }
+
+        ClapZoneReady = zoneReady;
+        ActorHandInsideClapZone = actorHandInside;
+        AudienceHandInsideClapZone = audienceHandInside;
+        AudienceHandPoseFresh = audienceHandPoseIsFresh;
     }
 
     public bool TryGetRecentAudienceRightHandPosition(
@@ -129,8 +171,90 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
             return false;
         }
 
-        RPC_PlayAudienceClapHaptic();
+        ClapEventSequence++;
+        RPC_PlayAudienceClapHaptic(ClapEventSequence);
         return true;
+    }
+
+    private void ObserveActorClapState(bool forceLog)
+    {
+        bool zoneReady = ClapZoneReady;
+        bool actorHandInside = ActorHandInsideClapZone;
+        bool audienceHandInside = AudienceHandInsideClapZone;
+        bool audiencePoseFresh = AudienceHandPoseFresh;
+
+        bool stateChanged =
+            !clapDiagnosticsInitialized ||
+            zoneReady != previousClapZoneReady ||
+            actorHandInside != previousActorHandInsideClapZone ||
+            audienceHandInside != previousAudienceHandInsideClapZone ||
+            audiencePoseFresh != previousAudienceHandPoseFresh;
+
+        if (forceLog || stateChanged)
+        {
+            Debug.Log(
+                "[ClapDiagnostics] Actor clap state: " +
+                "zoneReady=" + zoneReady +
+                ", actorHandInside=" + actorHandInside +
+                ", audienceRightHandInside=" + audienceHandInside +
+                ", audiencePoseFresh=" + audiencePoseFresh + ".",
+                this
+            );
+        }
+
+        clapDiagnosticsInitialized = true;
+        previousClapZoneReady = zoneReady;
+        previousActorHandInsideClapZone = actorHandInside;
+        previousAudienceHandInsideClapZone = audienceHandInside;
+        previousAudienceHandPoseFresh = audiencePoseFresh;
+
+        if (ClapEventSequence == lastObservedClapEventSequence)
+            return;
+
+        lastObservedClapEventSequence = ClapEventSequence;
+        Debug.Log(
+            "[ClapDiagnostics] Replicated clap event observed. Event=" +
+            ClapEventSequence + ".",
+            this
+        );
+        PlayAudienceClapEvent(ClapEventSequence, "replicated state");
+    }
+
+    private void PlayAudienceClapEvent(
+        int eventSequence,
+        string deliveryPath)
+    {
+        if (eventSequence <= 0 ||
+            eventSequence == lastPlayedClapEventSequence)
+        {
+            return;
+        }
+
+        if (audienceClapHaptic == null)
+        {
+            audienceClapHaptic =
+                FindFirstObjectByType<AudienceVirtualHighFiveController>(
+                    FindObjectsInactive.Include
+                );
+        }
+
+        if (audienceClapHaptic == null)
+        {
+            Debug.LogWarning(
+                "[ClapDiagnostics] Audience haptic controller was not " +
+                "found for event " + eventSequence + ".",
+                this
+            );
+            return;
+        }
+
+        lastPlayedClapEventSequence = eventSequence;
+        Debug.Log(
+            "[ClapDiagnostics] Playing event " + eventSequence +
+            " through " + deliveryPath + ".",
+            this
+        );
+        audienceClapHaptic.PlayNetworkClapHaptic();
     }
 
     private void SendAudienceStateWhenReady()
@@ -418,35 +542,19 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
 
     [Rpc(
         RpcSources.StateAuthority,
-        RpcTargets.All,
+        RpcTargets.Proxies,
         Channel = RpcChannel.Reliable,
-        TickAligned = false
+        TickAligned = false,
+        InvokeLocal = false
     )]
-    private void RPC_PlayAudienceClapHaptic()
+    private void RPC_PlayAudienceClapHaptic(int eventSequence)
     {
-        if (Object == null || Object.HasStateAuthority)
-            return;
-
-        if (audienceClapHaptic == null)
-        {
-            audienceClapHaptic =
-                FindFirstObjectByType<AudienceVirtualHighFiveController>(
-                    FindObjectsInactive.Include
-                );
-        }
-
-        if (audienceClapHaptic != null)
-        {
-            audienceClapHaptic.PlayNetworkClapHaptic();
-        }
-        else
-        {
-            Debug.LogWarning(
-                "AudiencePoseNetworkHub: The audience clap haptic " +
-                "controller could not be found.",
-                this
-            );
-        }
+        Debug.Log(
+            "[ClapDiagnostics] Reliable haptic RPC received. Event=" +
+            eventSequence + ".",
+            this
+        );
+        PlayAudienceClapEvent(eventSequence, "reliable RPC");
     }
 
     private PlayerRef GetOnlyOtherPlayer()

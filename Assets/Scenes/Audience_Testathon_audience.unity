@@ -81499,10 +81499,14 @@ MonoBehaviour:
     actionPath: /actions/NewSet/out/highFiveHaptic
     needsReinit: 0
   hapticSource: 2
-  hapticDuration: 0.065
-  hapticFrequency: 150
-  hapticAmplitude: 0.8
+  hapticDuration: 0.15
+  hapticFrequency: 100
+  hapticAmplitude: 1
   debugLog: 1
+  localTestKey: 104
+  enableLocalKeyboardTest: 1
+  useLegacyVivePulseFallback: 1
+  legacyPulseMicroseconds: 1800
 --- !u!114 &2147100001
 MonoBehaviour:
   m_ObjectHideFlags: 0

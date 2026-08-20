@@ -16,6 +16,10 @@ public sealed class ClapInteractionZone : MonoBehaviour
     [SerializeField, Min(0f)] private float synchronizationGraceSeconds =
         0.4f;
 
+    [Tooltip("在 claphand 前后额外允许的接触深度（米）。手掌中心和 Vive 手柄原点无法真正穿入实体屏幕，因此需要保留容差。")]
+    [SerializeField, Min(0f)] private float contactDepthToleranceMeters =
+        0.20f;
+
     [Header("Tracked Hands")]
     [Tooltip("可选。留空时自动使用本机演员 Avatar 的左手骨骼。")]
     [SerializeField] private Transform actorLeftHand;
@@ -49,6 +53,8 @@ public sealed class ClapInteractionZone : MonoBehaviour
         cooldownSeconds = Mathf.Max(0f, cooldownSeconds);
         synchronizationGraceSeconds =
             Mathf.Max(0f, synchronizationGraceSeconds);
+        contactDepthToleranceMeters =
+            Mathf.Max(0f, contactDepthToleranceMeters);
 
         if (clapVolume == null)
             clapVolume = GetComponent<BoxCollider>();
@@ -100,6 +106,13 @@ public sealed class ClapInteractionZone : MonoBehaviour
         bool clapConditionMet =
             actorContactIsRecent && audienceContactIsRecent;
 
+        poseNetworkHub.ReportClapDetectionState(
+            zoneReady: true,
+            actorHandInside,
+            audienceHandInside,
+            audienceHandPoseIsFresh
+        );
+
         LogContactStateChanges(actorHandInside, audienceHandInside);
 
         if (clapConditionMet &&
@@ -122,6 +135,19 @@ public sealed class ClapInteractionZone : MonoBehaviour
         }
 
         clapConditionWasMet = clapConditionMet;
+    }
+
+    private void OnDisable()
+    {
+        if (poseNetworkHub != null)
+        {
+            poseNetworkHub.ReportClapDetectionState(
+                zoneReady: false,
+                actorHandInside: false,
+                audienceHandInside: false,
+                audienceHandPoseIsFresh: false
+            );
+        }
     }
 
     private bool ReferencesAreReady()
@@ -247,9 +273,15 @@ public sealed class ClapInteractionZone : MonoBehaviour
             clapVolume.transform.InverseTransformPoint(worldPosition) -
             clapVolume.center;
         Vector3 halfSize = clapVolume.size * 0.5f;
+        float depthScale =
+            Mathf.Abs(clapVolume.transform.lossyScale.z);
+        float localDepthTolerance = depthScale > 0.0001f
+            ? contactDepthToleranceMeters / depthScale
+            : 0f;
 
         return Mathf.Abs(localPoint.x) <= halfSize.x &&
                Mathf.Abs(localPoint.y) <= halfSize.y &&
-               Mathf.Abs(localPoint.z) <= halfSize.z;
+               Mathf.Abs(localPoint.z) <=
+                   halfSize.z + localDepthTolerance;
     }
 }
