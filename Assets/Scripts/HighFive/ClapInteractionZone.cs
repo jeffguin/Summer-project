@@ -6,11 +6,15 @@ using UnityEngine;
 public sealed class ClapInteractionZone : MonoBehaviour
 {
     [Header("Clap Volume")]
-    [Tooltip("演员手和观众右手必须同时进入的屏幕区域。")]
+    [Tooltip("演员手需要进入的演员端屏幕区域。观众接触由观众端本地检测。")]
     [SerializeField] private BoxCollider clapVolume;
 
     [Tooltip("两次拍手触发之间至少间隔多少秒。触发后还必须先离开区域才能再次触发。")]
     [SerializeField, Min(0f)] private float cooldownSeconds = 5f;
+
+    [Tooltip("允许观众和演员先后接近屏幕的最大时间差，用于吸收网络延迟。")]
+    [SerializeField, Min(0f)] private float synchronizationGraceSeconds =
+        0.4f;
 
     [Header("Optional Actor Hand Overrides")]
     [Tooltip("可选。留空时自动使用本机演员 Avatar 的左手骨骼。")]
@@ -22,11 +26,10 @@ public sealed class ClapInteractionZone : MonoBehaviour
     [Header("Diagnostics")]
     [SerializeField] private bool debugLog;
 
-    private Transform audienceRightHand;
     private AudiencePoseNetworkHub poseNetworkHub;
     private float nextResolveTime;
     private float nextAllowedClapTime;
-    private bool bothHandsWereInside;
+    private bool clapConditionWasMet;
     private bool loggedReady;
 
     private void Awake()
@@ -40,6 +43,8 @@ public sealed class ClapInteractionZone : MonoBehaviour
     private void OnValidate()
     {
         cooldownSeconds = Mathf.Max(0f, cooldownSeconds);
+        synchronizationGraceSeconds =
+            Mathf.Max(0f, synchronizationGraceSeconds);
 
         if (clapVolume == null)
             clapVolume = GetComponent<BoxCollider>();
@@ -59,22 +64,24 @@ public sealed class ClapInteractionZone : MonoBehaviour
 
         if (!ReferencesAreReady())
         {
-            bothHandsWereInside = false;
+            clapConditionWasMet = false;
             return;
         }
-
-        bool audienceHandInside =
-            audienceRightHand.gameObject.activeInHierarchy &&
-            IsPointInsideVolume(audienceRightHand.position);
 
         bool actorHandInside =
             IsActiveHandInside(actorLeftHand) ||
             IsActiveHandInside(actorRightHand);
 
-        bool bothHandsInside = audienceHandInside && actorHandInside;
+        bool audienceHandNearScreen =
+            poseNetworkHub.HasRecentAudienceScreenContact(
+                synchronizationGraceSeconds
+            );
 
-        if (bothHandsInside &&
-            !bothHandsWereInside &&
+        bool clapConditionMet =
+            audienceHandNearScreen && actorHandInside;
+
+        if (clapConditionMet &&
+            !clapConditionWasMet &&
             Time.unscaledTime >= nextAllowedClapTime &&
             poseNetworkHub.TryNotifyAudienceClap())
         {
@@ -84,20 +91,20 @@ public sealed class ClapInteractionZone : MonoBehaviour
             if (debugLog)
             {
                 Debug.Log(
-                    "[ClapInteractionZone] Actor and audience hands " +
-                    "entered the clap volume. Audience haptic requested.",
+                    "[ClapInteractionZone] Actor hand entered the actor " +
+                    "screen zone while the audience reported local " +
+                    "screen contact. Audience haptic requested.",
                     this
                 );
             }
         }
 
-        bothHandsWereInside = bothHandsInside;
+        clapConditionWasMet = clapConditionMet;
     }
 
     private bool ReferencesAreReady()
     {
         return clapVolume != null &&
-               audienceRightHand != null &&
                (actorLeftHand != null || actorRightHand != null) &&
                poseNetworkHub != null;
     }
@@ -114,26 +121,6 @@ public sealed class ClapInteractionZone : MonoBehaviour
             );
         }
 
-        if (audienceRightHand == null)
-        {
-            AudiencePoseVisualTarget[] targets =
-                FindObjectsByType<AudiencePoseVisualTarget>(
-                    FindObjectsInactive.Include,
-                    FindObjectsSortMode.None
-                );
-
-            foreach (AudiencePoseVisualTarget target in targets)
-            {
-                if (target != null &&
-                    target.Kind ==
-                    AudiencePoseVisualTarget.TargetKind.RightHand)
-                {
-                    audienceRightHand = target.transform;
-                    break;
-                }
-            }
-        }
-
         if (actorLeftHand == null || actorRightHand == null)
             ResolveLocalActorHands();
 
@@ -145,7 +132,7 @@ public sealed class ClapInteractionZone : MonoBehaviour
             {
                 Debug.Log(
                     "[ClapInteractionZone] Clap volume, local actor hand " +
-                    "and audience right hand are ready.",
+                    "and audience screen-contact network state are ready.",
                     this
                 );
             }

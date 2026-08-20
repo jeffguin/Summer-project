@@ -13,8 +13,16 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
     [Header("Ray Source")]
     [SerializeField] private Transform rayOrigin;
+    [Tooltip("用于忽略手柄自身 Collider。留空时使用当前物体。")]
+    [SerializeField] private Transform controllerRoot;
+    [Tooltip("在现有 RayOrigin 朝向上增加的可调欧拉角偏移。")]
+    [SerializeField] private Vector3 rayRotationOffset;
+    [Tooltip("射线起点相对 RayOrigin 的本地位置偏移。")]
+    [SerializeField] private Vector3 rayStartOffset;
     [SerializeField] private float maxDistance = 5f;
     [SerializeField] private LayerMask interactableLayers = ~0;
+    [Tooltip("真正会遮挡交互射线的 Layer，例如 Blockers。")]
+    [SerializeField] private LayerMask blockingLayers;
 
     [Header("SteamVR Input")]
     [SerializeField] private SteamVR_Action_Boolean grabAction;
@@ -49,10 +57,15 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
     private float grabbedDistance;
     private Quaternion grabbedRotationOffset;
     private float nextTargetSendTime;
+    private Ray currentRay;
+    private Vector3 currentRayVisualEnd;
 
     private void Start()
     {
         runner = FindFirstObjectByType<NetworkRunner>();
+
+        if (controllerRoot == null)
+            controllerRoot = transform;
 
         if (rayOrigin == null)
         {
@@ -85,7 +98,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
             runner = FindFirstObjectByType<NetworkRunner>();
         }
 
-        UpdateHover();
+        EvaluateRay();
         UpdateInput();
 
         // Toggle 模式下，只要已经抓住物体，就持续发送目标位置。
@@ -98,33 +111,43 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         UpdateRayVisual();
     }
 
-    private void UpdateHover()
+    private void EvaluateRay()
     {
         hoveredObject = null;
 
         if (rayOrigin == null)
             return;
 
-        Ray ray = new Ray(rayOrigin.position, rayOrigin.forward);
+        currentRay = BuildRay();
+        currentRayVisualEnd =
+            currentRay.origin + currentRay.direction * maxDistance;
 
         if (drawDebugRay)
         {
-            Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.cyan);
+            Debug.DrawRay(
+                currentRay.origin,
+                currentRay.direction * maxDistance,
+                Color.cyan
+            );
         }
 
-        if (Physics.Raycast(
-                ray,
+        if (TryFindGrabbableUnderRay(
+                currentRay,
+                out NetworkPhysicalGrabbable target,
                 out RaycastHit hit,
-                maxDistance,
-                interactableLayers,
-                QueryTriggerInteraction.Ignore))
+                out RaycastHit blockingHit))
         {
-            hoveredObject = hit.collider.GetComponentInParent<NetworkPhysicalGrabbable>();
+            hoveredObject = target;
+            currentRayVisualEnd = hit.point;
 
             if (debugHoverLog && hoveredObject != null)
             {
                 DebugMessage($"Hovering: {hoveredObject.name}, HitPoint={hit.point}");
             }
+        }
+        else if (blockingHit.collider != null)
+        {
+            currentRayVisualEnd = blockingHit.point;
         }
     }
 
@@ -207,8 +230,9 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
         grabbedObject = targetObject;
 
+        Ray ray = BuildRay();
         grabbedDistance = Vector3.Distance(
-            rayOrigin.position,
+            ray.origin,
             grabbedObject.transform.position
         );
 
@@ -220,7 +244,8 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         if (keepInitialRotation)
         {
             grabbedRotationOffset =
-                Quaternion.Inverse(rayOrigin.rotation) * grabbedObject.transform.rotation;
+                Quaternion.Inverse(GetRayRotation()) *
+                grabbedObject.transform.rotation;
         }
         else
         {
@@ -294,12 +319,13 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
             return;
         }
 
+        Ray ray = BuildRay();
         Vector3 targetPosition =
-            rayOrigin.position + rayOrigin.forward * grabbedDistance;
+            ray.origin + ray.direction * grabbedDistance;
 
         Quaternion targetRotation = keepInitialRotation
-            ? rayOrigin.rotation * grabbedRotationOffset
-            : rayOrigin.rotation;
+            ? GetRayRotation() * grabbedRotationOffset
+            : GetRayRotation();
 
         DebugMessage(
             $"Sending grab target. " +
@@ -349,22 +375,8 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         if (lineRenderer == null || rayOrigin == null)
             return;
 
-        Vector3 start = rayOrigin.position;
-        Vector3 end = start + rayOrigin.forward * maxDistance;
-
-        if (Physics.Raycast(
-                rayOrigin.position,
-                rayOrigin.forward,
-                out RaycastHit hit,
-                maxDistance,
-                interactableLayers,
-                QueryTriggerInteraction.Ignore))
-        {
-            end = hit.point;
-        }
-
-        lineRenderer.SetPosition(0, start);
-        lineRenderer.SetPosition(1, end);
+        lineRenderer.SetPosition(0, currentRay.origin);
+        lineRenderer.SetPosition(1, currentRayVisualEnd);
 
         if (grabbedObject != null)
         {
@@ -403,27 +415,94 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         if (rayOrigin == null)
             return null;
 
-        Ray ray = new Ray(rayOrigin.position, rayOrigin.forward);
-
-        if (Physics.Raycast(
-                ray,
+        if (TryFindGrabbableUnderRay(
+                BuildRay(),
+                out NetworkPhysicalGrabbable target,
                 out RaycastHit hit,
-                maxDistance,
-                interactableLayers,
-                QueryTriggerInteraction.Ignore))
+                out _))
         {
             hitInfo = hit;
-
-            NetworkPhysicalGrabbable grabbable =
-                hit.collider.GetComponentInParent<NetworkPhysicalGrabbable>();
-
-            if (grabbable != null)
-            {
-                return grabbable;
-            }
+            return target;
         }
 
         return null;
+    }
+
+    private Ray BuildRay()
+    {
+        Vector3 origin = rayOrigin.TransformPoint(rayStartOffset);
+        Quaternion rotation = GetRayRotation();
+        return new Ray(origin, rotation * Vector3.forward);
+    }
+
+    private Quaternion GetRayRotation()
+    {
+        return rayOrigin.rotation * Quaternion.Euler(rayRotationOffset);
+    }
+
+    private bool TryFindGrabbableUnderRay(
+        Ray ray,
+        out NetworkPhysicalGrabbable target,
+        out RaycastHit targetHit,
+        out RaycastHit blockingHit)
+    {
+        target = null;
+        targetHit = default;
+        blockingHit = default;
+
+        float maximumInteractionDistance = maxDistance;
+
+        if (blockingLayers.value != 0 &&
+            Physics.Raycast(
+                ray,
+                out blockingHit,
+                maxDistance,
+                blockingLayers,
+                QueryTriggerInteraction.Ignore))
+        {
+            maximumInteractionDistance = blockingHit.distance;
+        }
+
+        RaycastHit[] hits = Physics.RaycastAll(
+            ray,
+            maximumInteractionDistance,
+            interactableLayers,
+            QueryTriggerInteraction.Ignore
+        );
+
+        float closestDistance = float.PositiveInfinity;
+
+        foreach (RaycastHit hit in hits)
+        {
+            if (hit.collider == null ||
+                IsControllerCollider(hit.collider) ||
+                hit.distance >= closestDistance)
+            {
+                continue;
+            }
+
+            NetworkPhysicalGrabbable candidate =
+                hit.collider.GetComponentInParent<NetworkPhysicalGrabbable>();
+
+            if (candidate == null)
+                continue;
+
+            target = candidate;
+            targetHit = hit;
+            closestDistance = hit.distance;
+        }
+
+        return target != null;
+    }
+
+    private bool IsControllerCollider(Collider candidate)
+    {
+        if (candidate == null || controllerRoot == null)
+            return false;
+
+        Transform candidateTransform = candidate.transform;
+        return candidateTransform == controllerRoot ||
+               candidateTransform.IsChildOf(controllerRoot);
     }
 
     private void DebugMessage(string message)

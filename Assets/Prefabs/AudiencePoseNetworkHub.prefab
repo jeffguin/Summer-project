@@ -45,9 +45,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c79cf4ac8efb4bfe87c25f7a801670b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  rightControllerObjectName: ViveRightController
   poseSendRate: 30
   smoothingSpeed: 24
+  hideBeforeFirstValidPose: 0
+  hideWhenPoseStale: 0
 --- !u!114 &410100004
 MonoBehaviour:
   m_ObjectHideFlags: 0
