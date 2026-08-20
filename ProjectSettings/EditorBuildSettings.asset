@@ -6,25 +6,13 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 0
-    path: Assets/Scenes/Main_Actor_Quest.unity
-    guid: b0960b2bf58611d448693024bc18eec5
-  - enabled: 0
-    path: Assets/Scenes/Main_Audience_Windows.unity
-    guid: c5d7ff082eb1fe6448520eafd3eb6978
-  - enabled: 0
-    path: Assets/Samples/Meta XR Movement SDK/83.0.0/Advanced Samples/Scenes/MovementISDKIntegration.unity
-    guid: 9cb00fe8f666bf849a5371383563d289
-  - enabled: 0
     path: Assets/Scenes/Audience_Testathon_audience.unity
     guid: 5374dfeb05a3a74468e511471f1edb64
   - enabled: 1
     path: Assets/Scenes/Actor_triggerAnimTuesday.unity
     guid: fb1e4155080a79943bb04bb78617b721
-  - enabled: 0
-    path: Assets/Scenes/MovementISDKIntegration custom.unity
-    guid: d5f306e3524116b499e01049da61b07b
   m_configObjects:
-    Unity.XR.OpenVR.Settings: {fileID: 0}
+    Unity.XR.OpenVR.Settings: {fileID: 11400000, guid: 4ee6a0745bdaafe44a12b575bda6fb1b, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
     com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: ed88f391c69c04d409417d0fdc5f3407, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: f76c8f34c9c544a48a4a7b59702cd2cb, type: 2}
