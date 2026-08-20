@@ -12,11 +12,7 @@ public sealed class ClapInteractionZone : MonoBehaviour
     [Tooltip("两次拍手触发之间至少间隔多少秒。触发后还必须先离开区域才能再次触发。")]
     [SerializeField, Min(0f)] private float cooldownSeconds = 5f;
 
-    [Tooltip("允许观众手和演员手先后进入区域的最大时间差，用于吸收动作及网络延迟。")]
-    [SerializeField, Min(0f)] private float synchronizationGraceSeconds =
-        0.4f;
-
-    [Tooltip("在 claphand 前后额外允许的接触深度（米）。手掌中心和 Vive 手柄原点无法真正穿入实体屏幕，因此需要保留容差。")]
+    [Tooltip("在 claphand 前后额外允许的接触深度（米）。手掌中心和演员端 AudienceHand 的中心点无法真正穿入实体屏幕，因此需要保留容差。")]
     [SerializeField, Min(0f)] private float contactDepthToleranceMeters =
         0.20f;
 
@@ -27,15 +23,17 @@ public sealed class ClapInteractionZone : MonoBehaviour
     [Tooltip("可选。留空时自动使用本机演员 Avatar 的右手骨骼。")]
     [SerializeField] private Transform actorRightHand;
 
+    [Header("Audience Visual")]
+    [Tooltip("演员端用于显示观众右手的 AudienceHand。留空时自动寻找 Target Kind 为 RightHand 的 AudiencePoseVisualTarget。")]
+    [SerializeField] private Transform audienceRightHandVisual;
+
     [Header("Diagnostics")]
     [SerializeField] private bool debugLog;
 
     private AudiencePoseNetworkHub poseNetworkHub;
     private float nextResolveTime;
     private float nextAllowedClapTime;
-    private float lastActorContactTime = float.NegativeInfinity;
-    private float lastAudienceContactTime = float.NegativeInfinity;
-    private bool clapConditionWasMet;
+    private bool waitingForExitAfterClap;
     private bool loggedReady;
     private bool previousActorHandInside;
     private bool previousAudienceHandInside;
@@ -51,8 +49,6 @@ public sealed class ClapInteractionZone : MonoBehaviour
     private void OnValidate()
     {
         cooldownSeconds = Mathf.Max(0f, cooldownSeconds);
-        synchronizationGraceSeconds =
-            Mathf.Max(0f, synchronizationGraceSeconds);
         contactDepthToleranceMeters =
             Mathf.Max(0f, contactDepthToleranceMeters);
 
@@ -74,9 +70,7 @@ public sealed class ClapInteractionZone : MonoBehaviour
 
         if (!ReferencesAreReady())
         {
-            clapConditionWasMet = false;
-            lastActorContactTime = float.NegativeInfinity;
-            lastAudienceContactTime = float.NegativeInfinity;
+            waitingForExitAfterClap = false;
             return;
         }
 
@@ -85,26 +79,15 @@ public sealed class ClapInteractionZone : MonoBehaviour
             IsActiveHandInside(actorRightHand);
         bool audienceHandPoseIsFresh =
             poseNetworkHub.TryGetRecentAudienceRightHandPosition(
-                out Vector3 audienceHandPosition
+                out _
             );
         bool audienceHandInside =
             audienceHandPoseIsFresh &&
-            IsPointInsideVolume(audienceHandPosition);
+            IsActiveHandInside(audienceRightHandVisual);
 
         float now = Time.unscaledTime;
-
-        if (actorHandInside)
-            lastActorContactTime = now;
-        if (audienceHandInside)
-            lastAudienceContactTime = now;
-
-        bool actorContactIsRecent =
-            now - lastActorContactTime <= synchronizationGraceSeconds;
-        bool audienceContactIsRecent =
-            now - lastAudienceContactTime <= synchronizationGraceSeconds;
-
         bool clapConditionMet =
-            actorContactIsRecent && audienceContactIsRecent;
+            actorHandInside && audienceHandInside;
 
         poseNetworkHub.ReportClapDetectionState(
             zoneReady: true,
@@ -115,11 +98,15 @@ public sealed class ClapInteractionZone : MonoBehaviour
 
         LogContactStateChanges(actorHandInside, audienceHandInside);
 
+        if (!clapConditionMet)
+            waitingForExitAfterClap = false;
+
         if (clapConditionMet &&
-            !clapConditionWasMet &&
+            !waitingForExitAfterClap &&
             now >= nextAllowedClapTime &&
             poseNetworkHub.TryNotifyAudienceClap())
         {
+            waitingForExitAfterClap = true;
             nextAllowedClapTime =
                 now + cooldownSeconds;
 
@@ -127,18 +114,19 @@ public sealed class ClapInteractionZone : MonoBehaviour
             {
                 Debug.Log(
                     "[ClapInteractionZone] Actor hand and synchronized " +
-                    "AudienceHand entered the same claphand volume. " +
+                    "actor-side AudienceHand visual are currently in " +
+                    "the same claphand volume. " +
                     "Audience haptic requested.",
                     this
                 );
             }
         }
-
-        clapConditionWasMet = clapConditionMet;
     }
 
     private void OnDisable()
     {
+        waitingForExitAfterClap = false;
+
         if (poseNetworkHub != null)
         {
             poseNetworkHub.ReportClapDetectionState(
@@ -154,7 +142,8 @@ public sealed class ClapInteractionZone : MonoBehaviour
     {
         return clapVolume != null &&
                (actorLeftHand != null || actorRightHand != null) &&
-               poseNetworkHub != null;
+               poseNetworkHub != null &&
+               audienceRightHandVisual != null;
     }
 
     private void ResolveRuntimeReferences()
@@ -172,6 +161,9 @@ public sealed class ClapInteractionZone : MonoBehaviour
         if (actorLeftHand == null || actorRightHand == null)
             ResolveLocalActorHands();
 
+        if (audienceRightHandVisual == null)
+            ResolveAudienceRightHandVisual();
+
         if (ReferencesAreReady() && !loggedReady)
         {
             loggedReady = true;
@@ -180,10 +172,33 @@ public sealed class ClapInteractionZone : MonoBehaviour
             {
                 Debug.Log(
                     "[ClapInteractionZone] Shared clap volume, local " +
-                    "actor hand and audience pose network hub are ready.",
+                    "actor hand, actor-side AudienceHand visual and " +
+                    "audience pose network hub are ready.",
                     this
                 );
             }
+        }
+    }
+
+    private void ResolveAudienceRightHandVisual()
+    {
+        AudiencePoseVisualTarget[] targets =
+            FindObjectsByType<AudiencePoseVisualTarget>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None
+            );
+
+        foreach (AudiencePoseVisualTarget target in targets)
+        {
+            if (target == null ||
+                target.Kind !=
+                    AudiencePoseVisualTarget.TargetKind.RightHand)
+            {
+                continue;
+            }
+
+            audienceRightHandVisual = target.transform;
+            return;
         }
     }
 
