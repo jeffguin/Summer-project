@@ -25,6 +25,7 @@ GameObject:
   - component: {fileID: -2097654288461428196}
   - component: {fileID: -7909196604399933235}
   - component: {fileID: 6157778876507204242}
+  - component: {fileID: 268643205806616961}
   m_Layer: 0
   m_Name: Glass_round_cup
   m_TagString: Untagged
@@ -563,6 +564,28 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   allowGrab: 1
   useRigidbody: 1
+--- !u!114 &268643205806616961
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1271819675091307709}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 908f5fd995721a14f9bd814415e6bce0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grabbable: {fileID: 5082242158015581467}
+  accelerationThreshold: 4
+  maxAcceleration: 18
+  angularSpeedThreshold: 120
+  maxAngularSpeed: 700
+  frequency: 0.8
+  minAmplitude: 0.15
+  maxAmplitude: 0.75
+  pulseDuration: 0.035
+  pulseInterval: 0.055
 --- !u!1 &1740723253665488002
 GameObject:
   m_ObjectHideFlags: 0
@@ -3091,6 +3114,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ea6c2ca7ea660ec49bb9022a0b150e6e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  pourStartAngle: 95
+  localBottleAxis: {x: 0, y: 1, z: 0}
+  localMouthOffset: {x: 0, y: 0.5, z: 0}
+  pourPrefab: {fileID: 0}
+  startingFill: 0.8
+  drainSpeed: 0.1
 --- !u!1 &5407320009365735991
 GameObject:
   m_ObjectHideFlags: 0

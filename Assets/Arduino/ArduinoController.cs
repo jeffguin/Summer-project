@@ -161,7 +161,7 @@ public class ArduinoController : MonoBehaviour
         {
             Debug.Log("Requesting NETWORK Sweet spawn.");
 
-            networkSync.RequestSpawnItemFromHardwarePeer();
+            networkSync.RequestActorFunctionFromHardwarePeer();
             return;
         }
 
