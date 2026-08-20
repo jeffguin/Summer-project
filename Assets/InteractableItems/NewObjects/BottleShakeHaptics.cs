@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.XR;
 using Oculus.Interaction;
 
 public class BottleShakeHaptics : MonoBehaviour
@@ -20,8 +21,7 @@ public class BottleShakeHaptics : MonoBehaviour
 
     private bool isGrabbed;
 
-    private OVRInput.Controller heldController =
-        OVRInput.Controller.None;
+    private InputDevice heldController;
 
     private Vector3 lastPosition;
     private Vector3 lastVelocity;
@@ -140,74 +140,107 @@ public class BottleShakeHaptics : MonoBehaviour
 
             StopHaptics();
 
-            heldController =
-                OVRInput.Controller.None;
+            heldController = default;
         }
     }
 
-    private OVRInput.Controller GetHoldingController()
+    private InputDevice GetHoldingController()
     {
-        float leftGrip =
-            Mathf.Max(
-                OVRInput.Get(
-                    OVRInput.Axis1D.PrimaryHandTrigger,
-                    OVRInput.Controller.LTouch
-                ),
-                OVRInput.Get(
-                    OVRInput.Axis1D.PrimaryIndexTrigger,
-                    OVRInput.Controller.LTouch
-                )
+        InputDevice leftController =
+            InputDevices.GetDeviceAtXRNode(
+                XRNode.LeftHand
             );
 
-        float rightGrip =
-            Mathf.Max(
-                OVRInput.Get(
-                    OVRInput.Axis1D.PrimaryHandTrigger,
-                    OVRInput.Controller.RTouch
-                ),
-                OVRInput.Get(
-                    OVRInput.Axis1D.PrimaryIndexTrigger,
-                    OVRInput.Controller.RTouch
-                )
+        InputDevice rightController =
+            InputDevices.GetDeviceAtXRNode(
+                XRNode.RightHand
             );
 
-        if (leftGrip > rightGrip)
+        float leftGrip = 0f;
+        float leftTrigger = 0f;
+
+        float rightGrip = 0f;
+        float rightTrigger = 0f;
+
+        leftController.TryGetFeatureValue(
+            CommonUsages.grip,
+            out leftGrip
+        );
+
+        leftController.TryGetFeatureValue(
+            CommonUsages.trigger,
+            out leftTrigger
+        );
+
+        rightController.TryGetFeatureValue(
+            CommonUsages.grip,
+            out rightGrip
+        );
+
+        rightController.TryGetFeatureValue(
+            CommonUsages.trigger,
+            out rightTrigger
+        );
+
+        float leftAmount =
+            Mathf.Max(
+                leftGrip,
+                leftTrigger
+            );
+
+        float rightAmount =
+            Mathf.Max(
+                rightGrip,
+                rightTrigger
+            );
+
+        if (leftAmount > rightAmount)
         {
-            return OVRInput.Controller.LTouch;
+            return leftController;
         }
 
-        if (rightGrip > leftGrip)
+        if (rightAmount > leftAmount)
         {
-            return OVRInput.Controller.RTouch;
+            return rightController;
         }
 
-        OVRInput.Controller activeController =
-            OVRInput.GetActiveController();
+        bool leftGripButton = false;
+        bool rightGripButton = false;
 
-        if (activeController == OVRInput.Controller.LTouch)
+        leftController.TryGetFeatureValue(
+            CommonUsages.gripButton,
+            out leftGripButton
+        );
+
+        rightController.TryGetFeatureValue(
+            CommonUsages.gripButton,
+            out rightGripButton
+        );
+
+        if (leftGripButton)
         {
-            return OVRInput.Controller.LTouch;
+            return leftController;
         }
 
-        if (activeController == OVRInput.Controller.RTouch)
+        if (rightGripButton)
         {
-            return OVRInput.Controller.RTouch;
+            return rightController;
         }
 
-        return OVRInput.Controller.Touch;
+        return rightController;
     }
 
     private void PlayHaptic(float amplitude)
     {
-        if (heldController == OVRInput.Controller.None)
+        if (!heldController.isValid)
             return;
 
         CancelInvoke(nameof(StopHaptics));
 
-        OVRInput.SetControllerVibration(
-            frequency,
+        heldController.SendHapticImpulse(
+            0,
             amplitude,
-            heldController
+            pulseDuration
         );
 
         Invoke(
@@ -220,14 +253,10 @@ public class BottleShakeHaptics : MonoBehaviour
     {
         CancelInvoke(nameof(StopHaptics));
 
-        if (heldController == OVRInput.Controller.None)
+        if (!heldController.isValid)
             return;
 
-        OVRInput.SetControllerVibration(
-            0f,
-            0f,
-            heldController
-        );
+        heldController.StopHaptics();
     }
 
     private void ResetMotion()
