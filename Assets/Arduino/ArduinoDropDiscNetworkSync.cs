@@ -1,10 +1,13 @@
 using Fusion;
 using UnityEngine;
+using UnityEngine.Events;
 
 [RequireComponent(typeof(NetworkObject))]
 public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
 {
     [SerializeField] private ArduinoController controller;
+
+    [SerializeField] private UnityEvent actorFunction;
 
     public bool IsNetworkSpawned => Object != null && Object.IsValid;
 
@@ -28,10 +31,6 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
             return;
         }
 
-        // Every peer receives this network object. Only Windows/Editor peers
-        // open the COM port; the Quest host keeps State Authority.
-        controller.ConfigureNetworkPeer(true);
-
         Debug.Log(
             $"[ArduinoDropDiscNetworkSync] {name}: Spawned. " +
             $"HasStateAuthority={Object.HasStateAuthority}"
@@ -39,19 +38,45 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
     }
 
 
-    public override void Despawned(NetworkRunner runner, bool hasState)
+    public void RequestActorFunctionFromHardwarePeer()
     {
-        if (controller != null)
+        if (!IsNetworkSpawned)
         {
-            controller.ConfigureNetworkPeer(false);
+            Debug.LogWarning(
+                "[ArduinoDropDiscNetworkSync] Cannot request actor function because the network object is not spawned."
+            );
+            return;
         }
+
+        if (Object.HasStateAuthority)
+        {
+            actorFunction?.Invoke();
+            return;
+        }
+
+        RPC_RequestActorFunctionFromHardwarePeer();
+    }
+
+
+    [Rpc(
+        RpcSources.All,
+        RpcTargets.StateAuthority,
+        Channel = RpcChannel.Reliable)]
+    private void RPC_RequestActorFunctionFromHardwarePeer()
+    {
+        actorFunction?.Invoke();
     }
 
 
     public void RequestSpawnItemFromHardwarePeer()
     {
         if (!IsNetworkSpawned)
+        {
+            Debug.LogWarning(
+                "[ArduinoDropDiscNetworkSync] Cannot request spawn because the network object is not spawned."
+            );
             return;
+        }
 
         if (Object.HasStateAuthority)
         {
@@ -67,13 +92,8 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
         RpcSources.All,
         RpcTargets.StateAuthority,
         Channel = RpcChannel.Reliable)]
-    private void RPC_RequestSpawnItemFromHardwarePeer(RpcInfo info = default)
+    private void RPC_RequestSpawnItemFromHardwarePeer()
     {
-        Debug.Log(
-            $"[ArduinoDropDiscNetworkSync] {name}: " +
-            $"Spawn requested by hardware peer {info.Source}."
-        );
-
         TrySpawnItemFromStateAuthority();
     }
 
@@ -83,92 +103,86 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
         if (!CanRunAuthoritativeAction())
             return;
 
-        if (!controller.TryGetItemSpawnData(
-                out GameObject prefab,
-                out Vector3 spawnPosition,
-                out Quaternion spawnRotation))
-        {
-            return;
-        }
+        EnsureController();
 
-        NetworkObject prefabNetworkObject = prefab.GetComponent<NetworkObject>();
-
-        if (prefabNetworkObject == null)
+        if (controller == null)
         {
             Debug.LogError(
-                $"[ArduinoDropDiscNetworkSync] {name}: " +
-                $"Item prefab '{prefab.name}' has no NetworkObject."
+                "[ArduinoDropDiscNetworkSync] Cannot spawn because ArduinoController is missing."
             );
             return;
         }
 
-        NetworkObject spawnedObject = Runner.Spawn(
+        if (!controller.TryGetItemSpawnData(
+            out GameObject prefab,
+            out Vector3 spawnPosition,
+            out Quaternion spawnRotation))
+        {
+            return;
+        }
+
+        NetworkObject prefabNetworkObject =
+            prefab.GetComponent<NetworkObject>();
+
+        if (prefabNetworkObject == null)
+        {
+            Debug.LogError(
+                "[ArduinoDropDiscNetworkSync] Item prefab does not have a NetworkObject."
+            );
+            return;
+        }
+
+        NetworkObject spawnedNetworkObject = Runner.Spawn(
             prefabNetworkObject,
             spawnPosition,
             spawnRotation,
             inputAuthority: null
         );
 
-        if (spawnedObject == null)
+        if (spawnedNetworkObject != null)
         {
-            Debug.LogError(
-                $"[ArduinoDropDiscNetworkSync] {name}: " +
-                $"Runner.Spawn returned null for '{prefab.name}'."
+            controller.RegisterNetworkSpawnedItem(
+                spawnedNetworkObject.gameObject
             );
-            return;
         }
-
-        controller.RegisterNetworkSpawnedItem(spawnedObject.gameObject);
-
-        RPC_PlaySweetDropAnimation();
-    }
-
-
-    [Rpc(
-        RpcSources.StateAuthority,
-        RpcTargets.All,
-        Channel = RpcChannel.Reliable)]
-    private void RPC_PlaySweetDropAnimation()
-    {
-        EnsureController();
-
-        if (controller == null)
-        {
-            Debug.LogError(
-                $"[ArduinoDropDiscNetworkSync] {name}: " +
-                "Cannot play Sweet drop animation because ArduinoController is missing."
-            );
-            return;
-        }
-
-        controller.PlaySweetDropAnimationFromNetwork();
     }
 
 
     public void TryCollectSweetFromStateAuthority(Collider other)
     {
-        if (!CanRunAuthoritativeAction() || other == null)
+        if (!CanRunAuthoritativeAction())
             return;
 
-        GameObject sweetObject = other.gameObject;
-        NetworkObject sweetNetworkObject =
-            other.GetComponentInParent<NetworkObject>();
+        if (other == null)
+            return;
 
-        if (sweetNetworkObject != null &&
-            sweetNetworkObject != Object &&
-            !sweetNetworkObject.IsValid)
+        EnsureController();
+
+        if (controller == null)
         {
+            Debug.LogError(
+                "[ArduinoDropDiscNetworkSync] Cannot collect Sweet because ArduinoController is missing."
+            );
             return;
         }
 
-        controller.HandleSweetCollectedOnStateAuthority(sweetObject);
+        GameObject sweetObject = other.gameObject;
 
-        // The reliable RPC invokes locally on the Quest host and on every
-        // audience proxy. Windows owns the serial connection; all peers play
-        // the same animation once.
+        NetworkObject sweetNetworkObject =
+            other.GetComponentInParent<NetworkObject>();
+
+        if (sweetNetworkObject != null)
+        {
+            sweetObject = sweetNetworkObject.gameObject;
+        }
+
+        controller.HandleSweetCollectedOnStateAuthority(
+            sweetObject
+        );
+
         RPC_HandleSweetCollectedForEveryone();
 
-        DespawnCollectedSweet(sweetObject, sweetNetworkObject);
+        DespawnCollectedSweet(other);
     }
 
 
@@ -180,78 +194,84 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
     {
         EnsureController();
 
-        if (controller == null)
+        if (controller != null)
+        {
+            controller.PlaySweetDropAnimationFromNetwork();
+        }
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        WindowsArduinoInput windowsArduino =
+            FindFirstObjectByType<WindowsArduinoInput>();
+
+        if (windowsArduino == null)
         {
             Debug.LogError(
-                $"[ArduinoDropDiscNetworkSync] {name}: " +
-                "Cannot handle the collected Sweet because ArduinoController is missing."
+                "[ArduinoDropDiscNetworkSync] WindowsArduinoInput was not found on Windows."
             );
             return;
         }
 
-        controller.SendSweetCollectedToHardwareFromNetwork();
-        controller.PlayFallingAnimationFromNetwork();
+        Debug.Log(
+            "[ArduinoDropDiscNetworkSync] Sweet collected. Sending 2 to Windows Arduino."
+        );
+
+        windowsArduino.SendSweetCollectedCommand();
+#endif
     }
 
 
     private bool CanRunAuthoritativeAction()
     {
-        if (!IsNetworkSpawned || !Object.HasStateAuthority)
+        if (!IsNetworkSpawned)
+        {
+            Debug.LogWarning(
+                "[ArduinoDropDiscNetworkSync] Network object is not spawned."
+            );
             return false;
+        }
 
-        EnsureController();
+        if (!Object.HasStateAuthority)
+        {
+            Debug.LogWarning(
+                "[ArduinoDropDiscNetworkSync] This peer does not have State Authority."
+            );
+            return false;
+        }
 
-        if (controller != null)
-            return true;
-
-        Debug.LogError(
-            $"[ArduinoDropDiscNetworkSync] {name}: " +
-            "ArduinoController is missing."
-        );
-        return false;
+        return true;
     }
 
 
-    private void DespawnCollectedSweet(
-        GameObject sweetObject,
-        NetworkObject sweetNetworkObject)
+    private void DespawnCollectedSweet(Collider other)
     {
-        if (sweetNetworkObject == Object)
-        {
-            Debug.LogError(
-                $"[ArduinoDropDiscNetworkSync] {name}: " +
-                "Refusing to despawn the dispenser itself. " +
-                "Check that the collected Sweet has its own NetworkObject."
-            );
+        if (other == null)
             return;
-        }
 
-        if (sweetNetworkObject != null && sweetNetworkObject.IsValid)
+        NetworkObject sweetNetworkObject =
+            other.GetComponentInParent<NetworkObject>();
+
+        if (sweetNetworkObject != null &&
+            sweetNetworkObject != Object &&
+            sweetNetworkObject.IsValid)
         {
-            if (!sweetNetworkObject.HasStateAuthority)
-            {
-                Debug.LogWarning(
-                    $"[ArduinoDropDiscNetworkSync] {name}: " +
-                    $"Cannot despawn '{sweetNetworkObject.name}' without State Authority."
-                );
-                return;
-            }
-
             Runner.Despawn(sweetNetworkObject);
             return;
         }
 
-        // Preserve the original behaviour for a non-networked Sweet used by
-        // a local test setup. Networked gameplay objects take the branch above.
-        Destroy(sweetObject);
+        Destroy(other.gameObject);
     }
 
 
     private void EnsureController()
     {
+        if (controller != null)
+            return;
+
+        controller = GetComponentInChildren<ArduinoController>(true);
+
         if (controller == null)
         {
-            controller = GetComponentInChildren<ArduinoController>(true);
+            controller = GetComponentInParent<ArduinoController>();
         }
     }
 }

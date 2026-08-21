@@ -284,6 +284,7 @@ GameObject:
   - component: {fileID: 7923307842624494215}
   - component: {fileID: -649368358018819608}
   - component: {fileID: -5416191959851325044}
+  - component: {fileID: 1589575523900264491}
   m_Layer: 0
   m_Name: smooth bottle
   m_TagString: Untagged
@@ -822,6 +823,28 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   allowGrab: 1
   useRigidbody: 1
+--- !u!114 &1589575523900264491
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3437738917719790247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 908f5fd995721a14f9bd814415e6bce0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grabbable: {fileID: -6120850691822283447}
+  accelerationThreshold: 4
+  maxAcceleration: 18
+  angularSpeedThreshold: 120
+  maxAngularSpeed: 700
+  frequency: 0.8
+  minAmplitude: 0.15
+  maxAmplitude: 0.75
+  pulseDuration: 0.035
+  pulseInterval: 0.055
 --- !u!1 &4039983856657674233
 GameObject:
   m_ObjectHideFlags: 0

@@ -110,8 +110,8 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
 
             if (rb != null)
             {
-                rb.isKinematic = true;
-                rb.useGravity = false;
+                rb.isKinematic = false;
+                rb.useGravity = true;
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }

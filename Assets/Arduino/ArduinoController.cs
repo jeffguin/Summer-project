@@ -1,21 +1,8 @@
 using UnityEngine;
-using System;
 using System.Collections;
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-using System.IO.Ports;
-#endif
 
 public class ArduinoController : MonoBehaviour
 {
-    [Header("Arduino Serial Settings")]
-    public string portName = "COM4";
-    public int baudRate = 9600;
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    private SerialPort serialPort;
-#endif
-
-
     [Header("TicTacToe Object Spawning")]
     [SerializeField] private GameObject itemIntoVirtualPrefab;
     [SerializeField] private Transform spawnPoint;
@@ -30,17 +17,13 @@ public class ArduinoController : MonoBehaviour
     [SerializeField] private Animator discAnimator;
 
 
-    [Header("Arduino Messages")]
-    [SerializeField] private string buttonPressMessage = "BUTTON_PRESS";
-    [SerializeField] private string rotateCompleteMessage = "ROTATE_COMPLETE";
-    [SerializeField] private string sweetCollectedMessage = "2";
-
     [Header("Animation")]
     [SerializeField] private string fallTriggerName = "Fall";
 
 
     [Header("Rotation")]
     public bool canRotate = false;
+
 
     [Header("Into Virtual Cooldown")]
     [SerializeField] private float intoVirtualCooldown = 5f;
@@ -53,93 +36,12 @@ public class ArduinoController : MonoBehaviour
     }
 
 
-    private void Start()
-    {
-        OpenSerialPort();
-
-        if (networkSync != null)
-            return;
-    }
-
-
-    private void OpenSerialPort()
-    {
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        if (serialPort != null && serialPort.IsOpen)
-            return;
-
-        Debug.Log("Attempting to connect to Arduino on " + portName);
-
-        try
-        {
-            serialPort = new SerialPort(portName, baudRate);
-            serialPort.ReadTimeout = 50;
-            serialPort.Open();
-
-            Debug.Log("Arduino connected on " + portName);
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("Could not connect to Arduino: " + e.Message);
-        }
-#else
-        Debug.Log(
-            "Arduino serial transport is disabled on this platform. " +
-            "The Windows network peer is expected to own the COM port."
-        );
-#endif
-    }
-
-
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            SendToArduino("2");
-        }
-
         if (Input.GetKeyDown(KeyCode.R))
         {
             ArduinoButtonPressed();
         }
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        if (serialPort == null || !serialPort.IsOpen)
-            return;
-
-        try
-        {
-            while (serialPort.BytesToRead > 0)
-            {
-                string message = serialPort.ReadLine().Trim();
-
-                Debug.Log("Arduino received: " + message);
-
-
-                if (message == buttonPressMessage)
-                {
-                    Debug.Log("Arduino button press detected.");
-                    ArduinoButtonPressed();
-                }
-
-
-                else if (message == rotateCompleteMessage)
-                {
-                    canRotate = true;
-
-                    Debug.Log("Arduino rotation complete. canRotate = true");
-                }
-            }
-        }
-        catch (TimeoutException)
-        {
-            // Normal because ReadTimeout is set to 50 ms.
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("Arduino read error: " + e.Message);
-        }
-#endif
     }
 
 
@@ -183,21 +85,22 @@ public class ArduinoController : MonoBehaviour
     {
         if (itemIntoVirtualPrefab == null)
         {
-            Debug.LogError("Item Into Virtual Prefab has not been assigned.");
+            Debug.LogError(
+                "Item Into Virtual Prefab has not been assigned."
+            );
             return;
         }
-
 
         if (spawnedItem != null)
         {
-            Debug.LogWarning("An Item_Into_Virtual is already spawned.");
+            Debug.LogWarning(
+                "An Item_Into_Virtual is already spawned."
+            );
             return;
         }
 
-
         Vector3 spawnPosition = transform.position;
         Quaternion spawnRotation = transform.rotation;
-
 
         if (spawnPoint != null)
         {
@@ -205,13 +108,20 @@ public class ArduinoController : MonoBehaviour
             spawnRotation = spawnPoint.rotation;
         }
 
-
         spawnedItem = Instantiate(
-            itemIntoVirtualPrefab,
-            spawnPosition,
-            spawnRotation
-        );
+        itemIntoVirtualPrefab,
+        spawnPosition,
+        spawnRotation
+);
 
+        Rigidbody rb = spawnedItem.GetComponent<Rigidbody>();
+
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.WakeUp();
+        }
 
         Debug.Log("Item_Into_Virtual spawned.");
     }
@@ -222,9 +132,13 @@ public class ArduinoController : MonoBehaviour
         if (!other.CompareTag("Sweet"))
             return;
 
-        if (networkSync != null && networkSync.IsNetworkSpawned)
+        if (networkSync != null &&
+            networkSync.IsNetworkSpawned)
         {
-            networkSync.TryCollectSweetFromStateAuthority(other);
+            networkSync.TryCollectSweetFromStateAuthority(
+                other
+            );
+
             return;
         }
 
@@ -234,19 +148,28 @@ public class ArduinoController : MonoBehaviour
 
     private void HandleSweetCollectedLocally(Collider other)
     {
-
         Debug.Log("Sweet object entered the trigger.");
 
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        WindowsArduinoInput windowsArduino =
+            FindFirstObjectByType<WindowsArduinoInput>();
 
-        // Tell Arduino that the Sweet/medal was collected.
-        SendToArduino(sweetCollectedMessage);
-        //play animation here
+        if (windowsArduino != null)
+        {
+            windowsArduino.SendSweetCollectedCommand();
+        }
+        else
+        {
+            Debug.LogWarning(
+                "WindowsArduinoInput was not found."
+            );
+        }
+#endif
+
         PlayFallingAnimation();
-        //destory the object in contact with the box
+
         Destroy(other.gameObject);
 
-
-        // Clear reference if this was the spawned object.
         if (other.gameObject == spawnedItem)
         {
             spawnedItem = null;
@@ -254,29 +177,14 @@ public class ArduinoController : MonoBehaviour
     }
 
 
-    internal void ConfigureNetworkPeer(bool isNetworkSpawned)
+    internal void HandleSweetCollectedOnStateAuthority(
+        GameObject sweetObject)
     {
-        if (isNetworkSpawned)
-        {
-            OpenSerialPort();
-        }
-        else
-        {
-            CloseSerialPort();
-        }
-    }
+        Debug.Log(
+            "Sweet object entered the network-authoritative trigger."
+        );
 
-
-    internal void HandleSweetCollectedOnStateAuthority(GameObject sweetObject)
-    {
-        Debug.Log("Sweet object entered the network-authoritative trigger.");
         ClearSpawnedItemIfMatches(sweetObject);
-    }
-
-
-    internal void SendSweetCollectedToHardwareFromNetwork()
-    {
-        SendToArduino(sweetCollectedMessage);
     }
 
 
@@ -303,13 +211,19 @@ public class ArduinoController : MonoBehaviour
 
         if (prefab == null)
         {
-            Debug.LogError("Item Into Virtual Prefab has not been assigned.");
+            Debug.LogError(
+                "Item Into Virtual Prefab has not been assigned."
+            );
+
             return false;
         }
 
         if (spawnedItem != null)
         {
-            Debug.LogWarning("An Item_Into_Virtual is already spawned.");
+            Debug.LogWarning(
+                "An Item_Into_Virtual is already spawned."
+            );
+
             return false;
         }
 
@@ -323,20 +237,27 @@ public class ArduinoController : MonoBehaviour
     }
 
 
-    internal void RegisterNetworkSpawnedItem(GameObject item)
+    internal void RegisterNetworkSpawnedItem(
+        GameObject item)
     {
         spawnedItem = item;
-        Debug.Log("Item_Into_Virtual network-spawned.");
+
+        Debug.Log(
+            "Item_Into_Virtual network-spawned."
+        );
     }
 
 
-    private void ClearSpawnedItemIfMatches(GameObject sweetObject)
+    private void ClearSpawnedItemIfMatches(
+        GameObject sweetObject)
     {
-        if (spawnedItem == null || sweetObject == null)
+        if (spawnedItem == null ||
+            sweetObject == null)
             return;
 
         if (sweetObject == spawnedItem ||
-            sweetObject.transform.IsChildOf(spawnedItem.transform))
+            sweetObject.transform.IsChildOf(
+                spawnedItem.transform))
         {
             spawnedItem = null;
         }
@@ -347,92 +268,17 @@ public class ArduinoController : MonoBehaviour
     {
         if (discAnimator == null)
         {
-            Debug.LogError("Disc Animator has not been assigned.");
+            Debug.LogError(
+                "Disc Animator has not been assigned."
+            );
+
             return;
         }
-
 
         discAnimator.SetTrigger(fallTriggerName);
 
-        Debug.Log("FallingDisc animation triggered.");
-    }
-
-
-    public void SendToArduino(string message)
-    {
-        Debug.Log("SendToArduino called with: " + message);
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        Debug.Log("serialPort null: " + (serialPort == null));
-
-        if (serialPort != null)
-        {
-            Debug.Log("serialPort open: " + serialPort.IsOpen);
-            Debug.Log("serialPort port: " + serialPort.PortName);
-        }
-
-        if (serialPort == null || !serialPort.IsOpen)
-        {
-            Debug.LogWarning(
-                "Arduino is not connected. Could not send: " + message
-            );
-
-            return;
-        }
-
-        Debug.Log("About to enter Arduino try");
-
-        try
-        {
-            Debug.Log("About to WriteLine");
-
-            serialPort.WriteLine(message);
-
-            Debug.Log("WriteLine finished");
-            Debug.Log("Sent to Arduino: " + message);
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("Arduino write error: " + e.ToString());
-        }
-#endif
-    }
-
-
-    private void OnApplicationQuit()
-    {
-        CloseSerialPort();
-    }
-
-
-    private void OnDestroy()
-    {
-        CloseSerialPort();
-    }
-
-
-    private void CloseSerialPort()
-    {
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        if (serialPort == null)
-            return;
-
-
-        try
-        {
-            if (serialPort.IsOpen)
-            {
-                serialPort.Close();
-
-                Debug.Log("Arduino serial port closed.");
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning(
-                "Error closing Arduino serial port: " + e.Message
-            );
-        }
-#endif
+        Debug.Log(
+            "FallingDisc animation triggered."
+        );
     }
 }
