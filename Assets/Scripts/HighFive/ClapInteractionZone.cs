@@ -26,6 +26,9 @@ public sealed class ClapInteractionZone : MonoBehaviour
     [Tooltip("演员本地右手掌。当前场景绑定 OVR Rig 的 r_palm_center_marker。")]
     [SerializeField] private Transform actorRightHand;
 
+    [Tooltip("优先使用具有本地输入权限的 Actor Avatar 左右手骨；场景中绑定的 OVR palm marker 仅作为 Avatar 尚未生成时的后备。")]
+    [SerializeField] private bool preferLocalActorAvatarHands = true;
+
     [Tooltip("运行时添加到演员手掌上的球形碰撞探针半径（米）。")]
     [SerializeField, Min(0.005f)]
     private float actorHandProbeRadius = 0.04f;
@@ -33,18 +36,28 @@ public sealed class ClapInteractionZone : MonoBehaviour
     [Header("Diagnostics")]
     [SerializeField] private bool debugLog;
 
-    private const string HandProbeObjectName = "ClapHandProbe";
+    private const string LeftHandProbeObjectName =
+        "ActorLeftClapHandProbe";
+    private const string RightHandProbeObjectName =
+        "ActorRightClapHandProbe";
 
     private readonly HashSet<SphereCollider> actorHandsInside =
         new HashSet<SphereCollider>();
 
     private AudiencePoseNetworkHub poseNetworkHub;
     private Rigidbody triggerBody;
+    private Transform trackedActorLeftHand;
+    private Transform trackedActorRightHand;
     private SphereCollider leftHandProbe;
     private SphereCollider rightHandProbe;
+    private Rigidbody leftHandProbeBody;
+    private Rigidbody rightHandProbeBody;
     private float nextResolveTime;
     private bool loggedReady;
     private bool triggerAvailable;
+    private bool leftHandProbePositioned;
+    private bool rightHandProbePositioned;
+    private bool usingLocalAvatarHands;
 
     private void Awake()
     {
@@ -67,13 +80,13 @@ public sealed class ClapInteractionZone : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (!ReferencesAreReady() &&
-            Time.unscaledTime >= nextResolveTime)
+        if (Time.unscaledTime >= nextResolveTime)
         {
             nextResolveTime = Time.unscaledTime + 0.5f;
             ResolveRuntimeReferences();
         }
 
+        UpdateActorHandProbes();
         RemoveUnavailableHands();
 
         if (!ReferencesAreReady())
@@ -172,6 +185,11 @@ public sealed class ClapInteractionZone : MonoBehaviour
         if (clapVolume != null)
             clapVolume.enabled = false;
 
+        SetHandProbeEnabled(leftHandProbe, false);
+        SetHandProbeEnabled(rightHandProbe, false);
+        leftHandProbePositioned = false;
+        rightHandProbePositioned = false;
+
         ReportDetectionState(
             zoneReady: false,
             audiencePoseFresh: false
@@ -193,7 +211,12 @@ public sealed class ClapInteractionZone : MonoBehaviour
                triggerBody != null &&
                poseNetworkHub != null &&
                audienceRightHandVisual != null &&
-               (leftHandProbe != null || rightHandProbe != null);
+               ((trackedActorLeftHand != null &&
+                 leftHandProbe != null &&
+                 leftHandProbeBody != null) ||
+                (trackedActorRightHand != null &&
+                 rightHandProbe != null &&
+                 rightHandProbeBody != null));
     }
 
     private void ResolveRuntimeReferences()
@@ -207,19 +230,20 @@ public sealed class ClapInteractionZone : MonoBehaviour
             );
         }
 
-        if (actorLeftHand == null || actorRightHand == null)
-            ResolveLocalActorHands();
-
         if (audienceRightHandVisual == null)
             ResolveAudienceRightHandVisual();
 
+        ResolveActorHandSources();
+
         leftHandProbe = EnsureActorHandProbe(
-            actorLeftHand,
-            leftHandProbe
+            LeftHandProbeObjectName,
+            leftHandProbe,
+            ref leftHandProbeBody
         );
         rightHandProbe = EnsureActorHandProbe(
-            actorRightHand,
-            rightHandProbe
+            RightHandProbeObjectName,
+            rightHandProbe,
+            ref rightHandProbeBody
         );
 
         if (ReferencesAreReady() && !loggedReady)
@@ -230,7 +254,11 @@ public sealed class ClapInteractionZone : MonoBehaviour
             {
                 Debug.Log(
                     "[ClapInteractionZone] AudienceHand-following " +
-                    "trigger and actor OVR hand probes are ready.",
+                    "trigger and independent actor hand physics " +
+                    "probes are ready. LeftSource=" +
+                    GetHierarchyPath(trackedActorLeftHand) +
+                    ", RightSource=" +
+                    GetHierarchyPath(trackedActorRightHand) + ".",
                     this
                 );
             }
@@ -260,42 +288,42 @@ public sealed class ClapInteractionZone : MonoBehaviour
     }
 
     private SphereCollider EnsureActorHandProbe(
-        Transform hand,
-        SphereCollider currentProbe)
+        string probeObjectName,
+        SphereCollider currentProbe,
+        ref Rigidbody probeBody)
     {
-        if (hand == null)
-            return null;
-
         SphereCollider probe = currentProbe;
-        if (probe == null || probe.transform.parent != hand)
+        if (probe == null)
         {
-            Transform probeTransform = hand.Find(HandProbeObjectName);
-
-            if (probeTransform == null)
-            {
-                GameObject probeObject = new GameObject(
-                    HandProbeObjectName
-                );
-                probeTransform = probeObject.transform;
-                probeTransform.SetParent(hand, false);
-                probeObject.layer = hand.gameObject.layer;
-            }
-
-            probe = probeTransform.GetComponent<SphereCollider>();
-
-            if (probe == null)
-            {
-                probe = probeTransform.gameObject.AddComponent<
-                    SphereCollider
-                >();
-            }
+            GameObject probeObject = new GameObject(probeObjectName);
+            probeObject.layer = gameObject.layer;
+            probe = probeObject.AddComponent<SphereCollider>();
+            probeBody = probeObject.AddComponent<Rigidbody>();
+            probe.enabled = false;
         }
+
+        if (probeBody == null)
+            probeBody = probe.GetComponent<Rigidbody>();
+
+        if (probeBody == null)
+            probeBody = probe.gameObject.AddComponent<Rigidbody>();
 
         probe.isTrigger = false;
         probe.center = Vector3.zero;
         probe.radius = actorHandProbeRadius;
-        probe.enabled = true;
+
+        ConfigureKinematicBody(probeBody);
         return probe;
+    }
+
+    private static void ConfigureKinematicBody(Rigidbody body)
+    {
+        body.useGravity = false;
+        body.isKinematic = true;
+        body.detectCollisions = true;
+        body.interpolation = RigidbodyInterpolation.Interpolate;
+        body.collisionDetectionMode =
+            CollisionDetectionMode.ContinuousSpeculative;
     }
 
     private void ResolveAudienceRightHandVisual()
@@ -320,8 +348,64 @@ public sealed class ClapInteractionZone : MonoBehaviour
         }
     }
 
-    private void ResolveLocalActorHands()
+    private void ResolveActorHandSources()
     {
+        Transform avatarLeftHand = null;
+        Transform avatarRightHand = null;
+
+        if (preferLocalActorAvatarHands)
+        {
+            TryResolveLocalActorAvatarHands(
+                out avatarLeftHand,
+                out avatarRightHand
+            );
+        }
+
+        Transform desiredLeftHand = avatarLeftHand != null
+            ? avatarLeftHand
+            : actorLeftHand;
+        Transform desiredRightHand = avatarRightHand != null
+            ? avatarRightHand
+            : actorRightHand;
+        bool nowUsingLocalAvatarHands =
+            avatarLeftHand != null || avatarRightHand != null;
+        bool sourceChanged =
+            desiredLeftHand != trackedActorLeftHand ||
+            desiredRightHand != trackedActorRightHand;
+
+        if (!sourceChanged)
+            return;
+
+        trackedActorLeftHand = desiredLeftHand;
+        trackedActorRightHand = desiredRightHand;
+        usingLocalAvatarHands = nowUsingLocalAvatarHands;
+        leftHandProbePositioned = false;
+        rightHandProbePositioned = false;
+        actorHandsInside.Clear();
+
+        SetHandProbeEnabled(leftHandProbe, false);
+        SetHandProbeEnabled(rightHandProbe, false);
+
+        if (debugLog)
+        {
+            Debug.Log(
+                "[ClapInteractionZone] Actor hand sources changed. " +
+                "UsingLocalAvatarHands=" + usingLocalAvatarHands +
+                ", Left=" + GetHierarchyPath(trackedActorLeftHand) +
+                ", Right=" + GetHierarchyPath(trackedActorRightHand) +
+                ".",
+                this
+            );
+        }
+    }
+
+    private bool TryResolveLocalActorAvatarHands(
+        out Transform leftHand,
+        out Transform rightHand)
+    {
+        leftHand = null;
+        rightHand = null;
+
         ActorMovementNetworkHandler[] handlers =
             FindObjectsByType<ActorMovementNetworkHandler>(
                 FindObjectsInactive.Exclude,
@@ -347,22 +431,74 @@ public sealed class ClapInteractionZone : MonoBehaviour
                 if (animator == null || !animator.isHuman)
                     continue;
 
-                Transform left =
+                leftHand =
                     animator.GetBoneTransform(HumanBodyBones.LeftHand);
-                Transform right =
+                rightHand =
                     animator.GetBoneTransform(HumanBodyBones.RightHand);
 
-                if (left == null && right == null)
+                if (leftHand == null && rightHand == null)
                     continue;
 
-                if (actorLeftHand == null)
-                    actorLeftHand = left;
-                if (actorRightHand == null)
-                    actorRightHand = right;
-
-                return;
+                return true;
             }
         }
+
+        return false;
+    }
+
+    private void UpdateActorHandProbes()
+    {
+        UpdateActorHandProbe(
+            trackedActorLeftHand,
+            leftHandProbe,
+            leftHandProbeBody,
+            ref leftHandProbePositioned
+        );
+        UpdateActorHandProbe(
+            trackedActorRightHand,
+            rightHandProbe,
+            rightHandProbeBody,
+            ref rightHandProbePositioned
+        );
+    }
+
+    private void UpdateActorHandProbe(
+        Transform handSource,
+        SphereCollider probe,
+        Rigidbody probeBody,
+        ref bool probePositioned)
+    {
+        bool sourceAvailable =
+            handSource != null &&
+            handSource.gameObject.activeInHierarchy &&
+            probe != null &&
+            probeBody != null;
+
+        if (!sourceAvailable)
+        {
+            SetHandProbeEnabled(probe, false);
+            actorHandsInside.Remove(probe);
+            probePositioned = false;
+            return;
+        }
+
+        Vector3 targetPosition = handSource.position;
+        Quaternion targetRotation = handSource.rotation;
+
+        if (!probePositioned)
+        {
+            probeBody.position = targetPosition;
+            probeBody.rotation = targetRotation;
+            probeBody.WakeUp();
+            probePositioned = true;
+        }
+        else
+        {
+            probeBody.MovePosition(targetPosition);
+            probeBody.MoveRotation(targetRotation);
+        }
+
+        SetHandProbeEnabled(probe, true);
     }
 
     private void FollowAudienceHand()
@@ -395,6 +531,14 @@ public sealed class ClapInteractionZone : MonoBehaviour
             actorHandsInside.Clear();
     }
 
+    private static void SetHandProbeEnabled(
+        SphereCollider probe,
+        bool enabled)
+    {
+        if (probe != null && probe.enabled != enabled)
+            probe.enabled = enabled;
+    }
+
     private void RemoveUnavailableHands()
     {
         actorHandsInside.RemoveWhere(
@@ -412,6 +556,40 @@ public sealed class ClapInteractionZone : MonoBehaviour
 
         Transform parent = probe.transform.parent;
         return parent != null ? parent.name : probe.name;
+    }
+
+    private static string GetHierarchyPath(Transform target)
+    {
+        if (target == null)
+            return "None";
+
+        string path = target.name;
+        Transform parent = target.parent;
+
+        while (parent != null)
+        {
+            path = parent.name + "/" + path;
+            parent = parent.parent;
+        }
+
+        return path;
+    }
+
+    private void OnDestroy()
+    {
+        DestroyRuntimeProbe(leftHandProbe);
+        DestroyRuntimeProbe(rightHandProbe);
+    }
+
+    private static void DestroyRuntimeProbe(SphereCollider probe)
+    {
+        if (probe == null)
+            return;
+
+        if (Application.isPlaying)
+            Destroy(probe.gameObject);
+        else
+            DestroyImmediate(probe.gameObject);
     }
 
     private void ReportDetectionState(
