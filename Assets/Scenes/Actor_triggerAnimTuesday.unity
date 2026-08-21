@@ -5176,6 +5176,14 @@ MonoBehaviour:
     fallbackEulerAngles: {x: 0, y: 0, z: 0}
     spawnOnActorHostStart: 1
     assignInputAuthorityToActor: 0
+  - name: SpawnBridge
+    prefab:
+      RawGuidValue: 3f4ccd378b62b3e4eac89e9037733297
+    spawnPoint: {fileID: 1869262299}
+    fallbackPosition: {x: 0, y: 0, z: 0}
+    fallbackEulerAngles: {x: 0, y: 0, z: 0}
+    spawnOnActorHostStart: 1
+    assignInputAuthorityToActor: 0
 --- !u!4 &110198571
 Transform:
   m_ObjectHideFlags: 0
