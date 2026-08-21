@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 567325270807770097}
   - component: {fileID: 4884903381401483033}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: HandGrabPose
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -107,7 +107,7 @@ GameObject:
   - component: {fileID: 769330932798100150}
   - component: {fileID: 3501027424159730419}
   - component: {fileID: 9118787949202243350}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: ISDK_HandGrabInteraction
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -219,8 +219,7 @@ GameObject:
   - component: {fileID: 1270092636397503195}
   - component: {fileID: 528981570634070181}
   - component: {fileID: 133076220334457892}
-  - component: {fileID: 3815592047633643755}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: cross-tictactoe new (1)
   m_TagString: TicTacToe
   m_Icon: {fileID: 0}
@@ -753,20 +752,6 @@ MonoBehaviour:
   grabbable: {fileID: 1507707384999414281}
   handGrabInteractable: {fileID: 8656577454971780992}
   debugLog: 1
---- !u!114 &3815592047633643755
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6595851176200607884}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 1541381998, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Guid:
-    RawGuidValue: 630e70a14b096034f990f734e139ea24
 --- !u!1001 &7422454462832345061
 PrefabInstance:
   m_ObjectHideFlags: 0

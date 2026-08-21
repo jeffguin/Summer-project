@@ -26,8 +26,7 @@ GameObject:
   - component: {fileID: 4305111125013511307}
   - component: {fileID: 1028324048623904720}
   - component: {fileID: 7878415149744672403}
-  - component: {fileID: 7912225861412741966}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: cross-tictactoe new (8)
   m_TagString: TicTacToe
   m_Icon: {fileID: 0}
@@ -560,20 +559,6 @@ MonoBehaviour:
   grabbable: {fileID: 46716730236551812}
   handGrabInteractable: {fileID: 5412356314110312157}
   debugLog: 1
---- !u!114 &7912225861412741966
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1192011424359932062}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 1541381998, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Guid:
-    RawGuidValue: 8db5073dbaa513a4cb7a0064a661a467
 --- !u!1 &1787134438039367094
 GameObject:
   m_ObjectHideFlags: 0
@@ -584,7 +569,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8349640397051713705}
   - component: {fileID: 2148823064650703008}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: HandGrabPose
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -681,7 +666,7 @@ GameObject:
   - component: {fileID: 3968097972024947115}
   - component: {fileID: 8489906387885259537}
   - component: {fileID: 7003789455703962370}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: ISDK_HandGrabInteraction
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -775,6 +760,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6681420065099219480}
     m_Modifications:
+    - target: {fileID: 2494611825973037488, guid: 75ce0f6c9033052409351b2945bc3f9d, type: 3}
+      propertyPath: m_Layer
+      value: 14
+      objectReference: {fileID: 0}
     - target: {fileID: 4399039794455135555, guid: 75ce0f6c9033052409351b2945bc3f9d, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -815,9 +804,17 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4665601439510359329, guid: 75ce0f6c9033052409351b2945bc3f9d, type: 3}
+      propertyPath: m_Layer
+      value: 14
+      objectReference: {fileID: 0}
     - target: {fileID: 8179600773595357788, guid: 75ce0f6c9033052409351b2945bc3f9d, type: 3}
       propertyPath: m_Name
       value: Cross_TicTacToe Visual
+      objectReference: {fileID: 0}
+    - target: {fileID: 8179600773595357788, guid: 75ce0f6c9033052409351b2945bc3f9d, type: 3}
+      propertyPath: m_Layer
+      value: 14
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
