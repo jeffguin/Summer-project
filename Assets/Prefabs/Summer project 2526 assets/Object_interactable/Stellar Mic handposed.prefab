@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 4790313473011997710}
   - component: {fileID: 5172329492244135361}
   - component: {fileID: 5221129797583228239}
-  - component: {fileID: 2804507821113147112}
   - component: {fileID: 9132124488666134011}
   - component: {fileID: 7345002234893149558}
   - component: {fileID: 6723018183589116885}
@@ -167,29 +166,6 @@ MonoBehaviour:
   _whenCancel:
     m_PersistentCalls:
       m_Calls: []
---- !u!114 &2804507821113147112
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 32174451923897364}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 43f86b14a27b52f4f9298c33015b5c26, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _transferOnSecondSelection: 0
-  _addNewPointsToFront: 0
-  _forwardElement: {fileID: 0}
-  _oneGrabTransformer: {fileID: 0}
-  _twoGrabTransformer: {fileID: 0}
-  _targetTransform: {fileID: 0}
-  _maxGrabPoints: -1
-  _rigidbody: {fileID: 0}
-  _kinematicWhileSelected: 0
-  _throwWhenUnselected: 0
-  _forceKinematicDisabled: 0
 --- !u!114 &9132124488666134011
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -533,7 +509,7 @@ GameObject:
   - component: {fileID: 4944967661467536993}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -645,7 +621,7 @@ GameObject:
   - component: {fileID: 7708755357485752007}
   m_Layer: 4
   m_Name: HandGrabInteractable Handle
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -724,7 +700,7 @@ GameObject:
   - component: {fileID: 2980970044048584491}
   m_Layer: 4
   m_Name: HandGrabInteractable_mirror
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -805,7 +781,7 @@ GameObject:
   - component: {fileID: 5881897071906630687}
   m_Layer: 0
   m_Name: Visuals
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -999,7 +975,7 @@ GameObject:
   - component: {fileID: 5286101422281421365}
   m_Layer: 4
   m_Name: HandGrabInteractable Top
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1078,7 +1054,7 @@ GameObject:
   - component: {fileID: 8477438691529966569}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1173,7 +1149,7 @@ GameObject:
   - component: {fileID: 8231767967877171100}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1285,7 +1261,7 @@ GameObject:
   - component: {fileID: 3722817665252041286}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1380,7 +1356,7 @@ GameObject:
   - component: {fileID: 4305051471587643000}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1493,7 +1469,7 @@ GameObject:
   - component: {fileID: 7781042327412404004}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1605,7 +1581,7 @@ GameObject:
   - component: {fileID: 923822187414474300}
   m_Layer: 4
   m_Name: HandGrabInteractable_mirror
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1684,7 +1660,7 @@ GameObject:
   - component: {fileID: 5131358555971684122}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1779,7 +1755,7 @@ GameObject:
   - component: {fileID: 7209808891153284470}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1892,7 +1868,7 @@ GameObject:
   - component: {fileID: 6795585115437970594}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -2023,7 +1999,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0.000000059604645, y: -0.00000011920929, z: 0.00000005960465, w: -1}
   m_LocalPosition: {x: -0.00029656023, y: -0.014049128, z: -0.0053965887}
-  m_LocalScale: {x: 0.1647604, y: 0.17864971, z: 0.16476038}
+  m_LocalScale: {x: 0.1647604, y: 0.28451753, z: 0.16476038}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 6171081986254316459}
@@ -2927,7 +2903,7 @@ GameObject:
   - component: {fileID: 6432653388851412152}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3039,7 +3015,7 @@ GameObject:
   - component: {fileID: 1000962786102075891}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3132,7 +3108,7 @@ GameObject:
   - component: {fileID: 7158447974484653472}
   m_Layer: 0
   m_Name: Root
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3166,7 +3142,7 @@ GameObject:
   - component: {fileID: 8347144279978045411}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3278,7 +3254,7 @@ GameObject:
   - component: {fileID: 7527567501903777152}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3374,7 +3350,7 @@ GameObject:
   - component: {fileID: 4349883056453159026}
   m_Layer: 0
   m_Name: mug_01
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3482,7 +3458,7 @@ GameObject:
   - component: {fileID: 3116380480766008704}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3595,7 +3571,7 @@ GameObject:
   - component: {fileID: 7173625293332954044}
   m_Layer: 0
   m_Name: BasicGrabPickupAudio
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3753,7 +3729,7 @@ GameObject:
   - component: {fileID: 9207590327659247856}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3847,7 +3823,7 @@ GameObject:
   - component: {fileID: 7569503070002368425}
   m_Layer: 4
   m_Name: HandGrabInteractable_mirror
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3927,7 +3903,7 @@ GameObject:
   - component: {fileID: 4001656299834050078}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4040,7 +4016,7 @@ GameObject:
   - component: {fileID: 5435211804277435663}
   m_Layer: 0
   m_Name: BasicGrabReleaseAudio
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4199,7 +4175,7 @@ GameObject:
   - component: {fileID: 3790722953612741284}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4311,7 +4287,7 @@ GameObject:
   - component: {fileID: 1049195270918401829}
   m_Layer: 4
   m_Name: HandGrabInteractable Side
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4391,7 +4367,7 @@ GameObject:
   - component: {fileID: 6884526491464498077}
   m_Layer: 4
   m_Name: HandGrab Point
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -5424,7 +5400,7 @@ GameObject:
   - component: {fileID: 8776720100565256509}
   m_Layer: 0
   m_Name: Audio
-  m_TagString: Untagged
+  m_TagString: TicTacToe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -5457,6 +5433,10 @@ PrefabInstance:
     - target: {fileID: 1917844079630003105, guid: cb1d033ed3519f74aa3f054e566d5b26, type: 3}
       propertyPath: m_Name
       value: Holdable Mic
+      objectReference: {fileID: 0}
+    - target: {fileID: 1917844079630003105, guid: cb1d033ed3519f74aa3f054e566d5b26, type: 3}
+      propertyPath: m_TagString
+      value: TicTacToe
       objectReference: {fileID: 0}
     - target: {fileID: 8157684272352291593, guid: cb1d033ed3519f74aa3f054e566d5b26, type: 3}
       propertyPath: m_LocalScale.x
@@ -5593,6 +5573,10 @@ PrefabInstance:
     - target: {fileID: 7315550831079387098, guid: 39b1e25f01aea1843ae3d67a612969f5, type: 3}
       propertyPath: m_IsActive
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7315550831079387098, guid: 39b1e25f01aea1843ae3d67a612969f5, type: 3}
+      propertyPath: m_TagString
+      value: TicTacToe
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

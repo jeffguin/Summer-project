@@ -6,7 +6,9 @@ public sealed class AudiencePoseVisualTarget : MonoBehaviour
     public enum TargetKind
     {
         Head,
-        RightHand
+        RightHand,
+        LeftHand,
+        H2
     }
 
     [SerializeField] private TargetKind targetKind;
