@@ -11,6 +11,7 @@ public class WindowsArduinoInput : MonoBehaviour
     [SerializeField] private int baudRate = 9600;
 
     [SerializeField] private string buttonPressMessage = "BUTTON_PRESS";
+    [SerializeField] private string sweetCollectedMessage = "2";
 
     private WindowsToHeadsetSpawnBridge spawnBridge;
 
@@ -72,9 +73,45 @@ public class WindowsArduinoInput : MonoBehaviour
     }
 
 
+    public void SendSweetCollectedCommand()
+    {
+        SendToArduino(sweetCollectedMessage);
+    }
+
+
+    public void SendToArduino(string message)
+    {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        Debug.Log("SendToArduino called with: " + message);
+
+        if (serialPort == null || !serialPort.IsOpen)
+        {
+            Debug.LogWarning(
+                "Arduino is not connected. Could not send: " + message
+            );
+            return;
+        }
+
+        try
+        {
+            serialPort.WriteLine(message);
+
+            Debug.Log("Sent to Arduino: " + message);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("Arduino write error: " + e.Message);
+        }
+#endif
+    }
+
+
     private void OpenSerialPort()
     {
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        if (serialPort != null && serialPort.IsOpen)
+            return;
+
         try
         {
             serialPort = new SerialPort(portName, baudRate);
