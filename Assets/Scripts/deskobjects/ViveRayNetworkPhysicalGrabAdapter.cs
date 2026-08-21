@@ -2,6 +2,7 @@
 
 using Fusion;
 using UnityEngine;
+using UnityEngine.XR;
 using Valve.VR;
 
 public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
@@ -27,6 +28,12 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
     [Header("SteamVR Input")]
     [SerializeField] private SteamVR_Action_Boolean grabAction;
     [SerializeField] private SteamVR_Input_Sources inputSource = SteamVR_Input_Sources.RightHand;
+    [Tooltip("启动时主动激活 GrabAction 所在的 SteamVR Action Set。")]
+    [SerializeField] private bool activateActionSetOnStart = true;
+    [Tooltip("SteamVR 动作未绑定或未激活时，使用 Unity XR 的右扳机作为兜底。")]
+    [SerializeField] private bool enableUnityXrTriggerFallback = true;
+    [Range(0.1f, 1f)]
+    [SerializeField] private float xrTriggerThreshold = 0.75f;
 
     [Header("Ray Visual")]
     [SerializeField] private LineRenderer lineRenderer;
@@ -39,6 +46,8 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
     [SerializeField] private bool keepInitialRotation = true;
     [SerializeField] private float defaultGrabDistance = 1.5f;
     [SerializeField] private float targetSendRate = 30f;
+    [Tooltip("等待 State Authority 确认抓取的最长时间。")]
+    [SerializeField] private float grabConfirmationTimeout = 2f;
 
     [Header("Input Mode")]
     [Tooltip("开启后：第一次 click 抓取，第二次 click 释放。适合 SteamVR Boolean Click 输入。")]
@@ -53,12 +62,17 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
     private NetworkPhysicalGrabbable hoveredObject;
     private NetworkPhysicalGrabbable grabbedObject;
+    private NetworkPhysicalGrabbable pendingGrabObject;
 
     private float grabbedDistance;
     private Quaternion grabbedRotationOffset;
     private float nextTargetSendTime;
+    private float pendingGrabDeadline;
     private Ray currentRay;
     private Vector3 currentRayVisualEnd;
+    private bool xrTriggerWasPressed;
+    private bool loggedInactiveSteamVrAction;
+    private bool loggedXrFallback;
 
     private void Start()
     {
@@ -75,6 +89,10 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         if (grabAction == null)
         {
             Debug.LogError("ViveRayNetworkPhysicalGrabAdapter: GrabAction is missing.");
+        }
+        else if (activateActionSetOnStart && grabAction.actionSet != null)
+        {
+            grabAction.actionSet.Activate(inputSource);
         }
 
         if (lineRenderer != null)
@@ -100,6 +118,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
         EvaluateRay();
         UpdateInput();
+        UpdatePendingGrab();
 
         // Toggle 模式下，只要已经抓住物体，就持续发送目标位置。
         // 非 Toggle 模式下，grabbedObject 也只会在按住期间存在。
@@ -153,23 +172,19 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
     private void UpdateInput()
     {
-        if (grabAction == null)
-        {
-            DebugMessage("UpdateInput skipped because grabAction is null.");
-            return;
-        }
-
         if (runner == null)
         {
             DebugMessage("UpdateInput skipped because runner is null.");
             return;
         }
 
+        ReadGrabInput(out bool grabDown, out bool grabHeld, out bool grabUp);
+
         if (toggleGrabMode)
         {
-            if (grabAction.GetStateDown(inputSource))
+            if (grabDown)
             {
-                if (grabbedObject == null)
+                if (grabbedObject == null && pendingGrabObject == null)
                 {
                     DebugMessage("Toggle click: begin grab.");
                     TryBeginGrab();
@@ -185,22 +200,115 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         }
 
         // 非 Toggle 模式：按下抓取，松开释放。
-        if (grabAction.GetStateDown(inputSource))
+        if (grabDown)
         {
             DebugMessage("Grab action down.");
             TryBeginGrab();
         }
 
-        if (grabAction.GetState(inputSource) && grabbedObject != null)
+        if (grabHeld && grabbedObject != null)
         {
             DebugMessage($"Grab action holding. GrabbedObject={grabbedObject.name}");
         }
 
-        if (grabAction.GetStateUp(inputSource))
+        if (grabUp)
         {
             DebugMessage("Grab action up.");
             EndGrab();
         }
+    }
+
+    private void ReadGrabInput(
+        out bool stateDown,
+        out bool state,
+        out bool stateUp)
+    {
+        bool steamVrDown = false;
+        bool steamVrState = false;
+        bool steamVrUp = false;
+
+        if (grabAction != null)
+        {
+            steamVrDown = grabAction.GetStateDown(inputSource);
+            steamVrState = grabAction.GetState(inputSource);
+            steamVrUp = grabAction.GetStateUp(inputSource);
+
+            if (!grabAction.GetActive(inputSource) && !loggedInactiveSteamVrAction)
+            {
+                Debug.LogWarning(
+                    "[ViveRayNetworkPhysicalGrabAdapter] SteamVR GrabAction is " +
+                    $"not active for {inputSource}. Unity XR trigger fallback will be used when available."
+                );
+                loggedInactiveSteamVrAction = true;
+            }
+        }
+
+        bool xrDown = false;
+        bool xrState = false;
+        bool xrUp = false;
+
+        if (enableUnityXrTriggerFallback &&
+            TryReadUnityXrTrigger(out bool xrPressed))
+        {
+            xrState = xrPressed;
+            xrDown = xrPressed && !xrTriggerWasPressed;
+            xrUp = !xrPressed && xrTriggerWasPressed;
+            xrTriggerWasPressed = xrPressed;
+
+            if (xrDown && !steamVrDown && !loggedXrFallback)
+            {
+                Debug.LogWarning(
+                    "[ViveRayNetworkPhysicalGrabAdapter] Grab was triggered by " +
+                    "the Unity XR fallback. Check the SteamVR rightconcl binding on this PC."
+                );
+                loggedXrFallback = true;
+            }
+        }
+        else
+        {
+            xrTriggerWasPressed = false;
+        }
+
+        stateDown = steamVrDown || xrDown;
+        state = steamVrState || xrState;
+        stateUp = steamVrUp || xrUp;
+    }
+
+    private bool TryReadUnityXrTrigger(out bool pressed)
+    {
+        pressed = false;
+
+        XRNode node;
+        if (inputSource == SteamVR_Input_Sources.RightHand)
+        {
+            node = XRNode.RightHand;
+        }
+        else if (inputSource == SteamVR_Input_Sources.LeftHand)
+        {
+            node = XRNode.LeftHand;
+        }
+        else
+        {
+            return false;
+        }
+
+        InputDevice device = InputDevices.GetDeviceAtXRNode(node);
+        if (!device.isValid)
+            return false;
+
+        if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool triggerButton))
+        {
+            pressed = triggerButton;
+            return true;
+        }
+
+        if (device.TryGetFeatureValue(CommonUsages.trigger, out float triggerValue))
+        {
+            pressed = triggerValue >= xrTriggerThreshold;
+            return true;
+        }
+
+        return false;
     }
 
     private void TryBeginGrab()
@@ -228,12 +336,10 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
             return;
         }
 
-        grabbedObject = targetObject;
-
         Ray ray = BuildRay();
         grabbedDistance = Vector3.Distance(
             ray.origin,
-            grabbedObject.transform.position
+            targetObject.transform.position
         );
 
         if (grabbedDistance <= 0.05f)
@@ -245,7 +351,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         {
             grabbedRotationOffset =
                 Quaternion.Inverse(GetRayRotation()) *
-                grabbedObject.transform.rotation;
+                targetObject.transform.rotation;
         }
         else
         {
@@ -253,18 +359,50 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
         }
 
         nextTargetSendTime = 0f;
+        pendingGrabObject = targetObject;
+        pendingGrabDeadline = Time.time + Mathf.Max(0.1f, grabConfirmationTimeout);
 
         DebugMessage(
-            $"Request grab. Object={grabbedObject.name}, " +
+            $"Request grab. Object={pendingGrabObject.name}, " +
             $"Player={runner.LocalPlayer}, Role={grabRole}, Distance={grabbedDistance}"
         );
 
-        grabbedObject.RPC_RequestGrab(
+        pendingGrabObject.RPC_RequestGrab(
             runner.LocalPlayer,
             (int)grabRole
         );
+    }
 
-        SendGrabTargetImmediately();
+    private void UpdatePendingGrab()
+    {
+        if (pendingGrabObject == null || runner == null)
+            return;
+
+        if (pendingGrabObject.IsControlledBy(runner.LocalPlayer, grabRole))
+        {
+            grabbedObject = pendingGrabObject;
+            pendingGrabObject = null;
+
+            DebugMessage(
+                $"Grab confirmed by State Authority. Object={grabbedObject.name}, " +
+                $"Player={runner.LocalPlayer}, Role={grabRole}"
+            );
+
+            SendGrabTargetImmediately();
+            return;
+        }
+
+        if (pendingGrabObject.IsGrabbed || Time.time >= pendingGrabDeadline)
+        {
+            Debug.LogWarning(
+                "[ViveRayNetworkPhysicalGrabAdapter] Grab request was not accepted " +
+                $"by State Authority. Object={pendingGrabObject.name}, " +
+                $"IsGrabbed={pendingGrabObject.IsGrabbed}, " +
+                $"Owner={pendingGrabObject.GrabbedByPlayer}, " +
+                $"Role={pendingGrabObject.CurrentGrabRole}"
+            );
+            pendingGrabObject = null;
+        }
     }
 
     private void UpdateGrabTarget()
@@ -346,6 +484,25 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
     private void EndGrab()
     {
+        if (grabbedObject == null && pendingGrabObject != null)
+        {
+            DebugMessage(
+                $"Cancel pending grab. Object={pendingGrabObject.name}, " +
+                $"Player={runner?.LocalPlayer}, Role={grabRole}"
+            );
+
+            if (runner != null)
+            {
+                pendingGrabObject.RPC_RequestRelease(
+                    runner.LocalPlayer,
+                    (int)grabRole
+                );
+            }
+
+            pendingGrabObject = null;
+            return;
+        }
+
         if (grabbedObject == null)
         {
             DebugMessage("Grab released but no object was currently grabbed.");
@@ -383,7 +540,7 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
             if (grabRayMaterial != null)
                 lineRenderer.material = grabRayMaterial;
         }
-        else if (hoveredObject != null)
+        else if (pendingGrabObject != null || hoveredObject != null)
         {
             if (hoverRayMaterial != null)
                 lineRenderer.material = hoverRayMaterial;
@@ -406,6 +563,17 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
             grabbedObject = null;
         }
+
+        if (pendingGrabObject != null && runner != null)
+        {
+            pendingGrabObject.RPC_RequestRelease(
+                runner.LocalPlayer,
+                (int)grabRole
+            );
+        }
+
+        pendingGrabObject = null;
+        xrTriggerWasPressed = false;
     }
 
     private NetworkPhysicalGrabbable FindGrabbableUnderRay(out RaycastHit hitInfo)
