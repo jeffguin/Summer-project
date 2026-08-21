@@ -4236,7 +4236,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5574942240849701003}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5b023183069df224080314a560e6e1ff, type: 3}
   m_Name: 
@@ -4275,7 +4275,7 @@ Animator:
   m_Controller: {fileID: 0}
   m_CullingMode: 1
   m_UpdateMode: 0
-  m_ApplyRootMotion: 1
+  m_ApplyRootMotion: 0
   m_LinearVelocityBlending: 0
   m_StabilizeFeet: 0
   m_AnimatePhysics: 0
@@ -4505,7 +4505,7 @@ MonoBehaviour:
   _debugDrawInvalidSourceSkeletonColor: {r: 1, g: 0, b: 1, a: 1}
   _skeletonRetargeter:
     HipsScale: {x: 0, y: 0, z: 0}
-    _retargetingBehavior: 3
+    _retargetingBehavior: 1
     _hideLowerBodyWhenUpperBodyTracking: 0
     _hideLegScale: {x: 0, y: 0, z: 0}
     _applyRootScale: 1
@@ -4524,7 +4524,7 @@ MonoBehaviour:
       _moveHandBackToOriginalPosition: 1
       _maxDisplacementDistance: 0.05
   _targetProcessorContainers: []
-  _ownership: 1
+  _ownership: 0
   _compressionType: 0
   _useDeltaCompression: 1
   _useSyncInterval: 1
@@ -4565,7 +4565,7 @@ MonoBehaviour:
     ReferenceTransform: {fileID: 0}
     EnableSynthesizedStandingPose: 0
     UpperBodySource: 0
-    LowerBodySource: 0
+    LowerBodySource: 1
     BlendMode: 1
     BlendFactor: 0
     ManualVelocity: {x: 0, y: 0, z: 0}
