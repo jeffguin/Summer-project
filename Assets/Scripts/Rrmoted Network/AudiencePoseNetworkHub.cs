@@ -300,10 +300,46 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
 
     private void TryResolveAudienceSourceProvider()
     {
-        audienceSourceProvider =
-            FindFirstObjectByType<AudiencePoseSourceProvider>(
-                FindObjectsInactive.Exclude
+        AudiencePoseSourceProvider[] providers =
+            FindObjectsByType<AudiencePoseSourceProvider>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None
             );
+
+        AudiencePoseSourceProvider selectedProvider = null;
+        int eligibleProviderCount = 0;
+
+        foreach (AudiencePoseSourceProvider provider in providers)
+        {
+            if (provider == null ||
+                !provider.isActiveAndEnabled ||
+                !provider.UseForNetworkPose)
+            {
+                continue;
+            }
+
+            eligibleProviderCount++;
+            if (selectedProvider == null)
+                selectedProvider = provider;
+        }
+
+        if (eligibleProviderCount > 1)
+        {
+            Debug.LogError(
+                "AudiencePoseNetworkHub: More than one active audience " +
+                "network pose source is enabled. Disable Use For Network " +
+                "Pose on every source except H1.",
+                this
+            );
+            selectedProvider = null;
+        }
+
+        if (audienceSourceProvider != selectedProvider)
+        {
+            audienceSourceProvider = selectedProvider;
+            loggedSourcesReady = false;
+            loggedMissingSources = false;
+        }
 
         if (audienceSourceProvider != null && !loggedSourcesReady)
         {
@@ -311,7 +347,8 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
             loggedMissingSources = false;
             Debug.Log(
                 "AudiencePoseNetworkHub: Explicit audience sources bound. " +
-                "Head=" + audienceSourceProvider.HeadSourceName +
+                "Source=" + audienceSourceProvider.NetworkSourceLabel +
+                ", Head=" + audienceSourceProvider.HeadSourceName +
                 ", RightHand=" +
                 audienceSourceProvider.RightHandSourceName + ".",
                 this
@@ -321,8 +358,9 @@ public sealed class AudiencePoseNetworkHub : NetworkBehaviour
         {
             loggedMissingSources = true;
             Debug.LogWarning(
-                "AudiencePoseNetworkHub: Waiting for an active " +
-                "AudiencePoseSourceProvider.",
+                "AudiencePoseNetworkHub: Waiting for exactly one active " +
+                "AudiencePoseSourceProvider with Use For Network Pose " +
+                "enabled (H1 in the audience scene).",
                 this
             );
         }

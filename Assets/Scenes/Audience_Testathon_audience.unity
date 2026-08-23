@@ -12706,7 +12706,7 @@ GameObject:
   - component: {fileID: 369691188}
   - component: {fileID: 2147100001}
   m_Layer: 0
-  m_Name: TrackerPoseReader
+  m_Name: TrackerPoseReader H1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -81826,6 +81826,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f1d1e8b8f2b4cf1984100e4516cc9a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  networkSourceLabel: H2
+  useForNetworkPose: 0
   headTrackerReader: {fileID: 2116271818}
   headSource: {fileID: 195134167}
   rightHandSource: {fileID: 190327127}
@@ -82554,6 +82556,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f1d1e8b8f2b4cf1984100e4516cc9a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  networkSourceLabel: H1
+  useForNetworkPose: 1
   headTrackerReader: {fileID: 369691188}
   headSource: {fileID: 1838740840}
   rightHandSource: {fileID: 190327127}

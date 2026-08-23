@@ -6,6 +6,13 @@ using Valve.VR;
 [DisallowMultipleComponent]
 public sealed class AudiencePoseSourceProvider : MonoBehaviour
 {
+    [Header("Network Source Selection")]
+    [Tooltip("用于日志和 Inspector 识别该姿态来源，例如 H1。")]
+    [SerializeField] private string networkSourceLabel = "Audience";
+
+    [Tooltip("启用后，此来源才会向演员端发送观众头部和右手姿态。一个观众场景只应启用一个。")]
+    [SerializeField] private bool useForNetworkPose = true;
+
     [Header("Explicit Audience Sources")]
     [SerializeField] private DirectOpenVRTrackerReader headTrackerReader;
     [SerializeField] private Transform headSource;
@@ -20,6 +27,13 @@ public sealed class AudiencePoseSourceProvider : MonoBehaviour
 
     public string RightHandSourceName =>
         rightHandSource != null ? rightHandSource.name : "None";
+
+    public string NetworkSourceLabel =>
+        string.IsNullOrWhiteSpace(networkSourceLabel)
+            ? gameObject.name
+            : networkSourceLabel;
+
+    public bool UseForNetworkPose => useForNetworkPose;
 
     private void Awake()
     {
