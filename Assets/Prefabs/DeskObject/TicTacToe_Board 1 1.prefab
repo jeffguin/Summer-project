@@ -1459,7 +1459,7 @@ GameObject:
   - component: {fileID: 2221066089467672878}
   - component: {fileID: 5048849234557221390}
   - component: {fileID: 8569785387854381597}
-  - component: {fileID: 1933795951914842418}
+  - component: {fileID: 1408296886646402729}
   m_Layer: 0
   m_Name: TicTacToe_Board 1 1
   m_TagString: TicTacToe
@@ -1575,9 +1575,10 @@ MonoBehaviour:
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
-  NetworkedBehaviours: []
+  NetworkedBehaviours:
+  - {fileID: 1408296886646402729}
   ForceRemoteRenderTimeframe: 0
---- !u!114 &1933795951914842418
+--- !u!114 &1408296886646402729
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1586,11 +1587,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 5628222925459512469}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 1541381998, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Guid:
-    RawGuidValue: 6062aca4cfd8ebd4cbf5ebd574eb65a9
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0
 --- !u!1 &5847770529125557876
 GameObject:
   m_ObjectHideFlags: 0
