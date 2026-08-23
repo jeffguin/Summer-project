@@ -6846,6 +6846,9 @@ MonoBehaviour:
     actionPath: /actions/NewSet/in/rightconcl
     needsReinit: 0
   inputSource: 2
+  activateActionSetOnStart: 1
+  enableUnityXrTriggerFallback: 1
+  xrTriggerThreshold: 0.75
   lineRenderer: {fileID: 1770680984}
   idleRayMaterial: {fileID: 2100000, guid: d4cf9771438c5464f9af69852a9cc898, type: 2}
   hoverRayMaterial: {fileID: 2100000, guid: 73e599628364d8741ad95ae82c6a7fd1, type: 2}
@@ -6854,6 +6857,7 @@ MonoBehaviour:
   keepInitialRotation: 1
   defaultGrabDistance: 1.5
   targetSendRate: 30
+  grabConfirmationTimeout: 2
   toggleGrabMode: 1
   debugLog: 1
   drawDebugRay: 1
@@ -12607,6 +12611,9 @@ MonoBehaviour:
     actionPath: /actions/NewSet/in/rightconcl
     needsReinit: 0
   inputSource: 2
+  activateActionSetOnStart: 1
+  enableUnityXrTriggerFallback: 1
+  xrTriggerThreshold: 0.75
   lineRenderer: {fileID: 1634667180}
   idleRayMaterial: {fileID: 2100000, guid: d4cf9771438c5464f9af69852a9cc898, type: 2}
   hoverRayMaterial: {fileID: 2100000, guid: 73e599628364d8741ad95ae82c6a7fd1, type: 2}
@@ -12615,6 +12622,7 @@ MonoBehaviour:
   keepInitialRotation: 1
   defaultGrabDistance: 1.5
   targetSendRate: 30
+  grabConfirmationTimeout: 2
   toggleGrabMode: 1
   debugLog: 1
   drawDebugRay: 1
@@ -73211,13 +73219,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1868507334}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0.3919481, z: -0, w: 0.9199873}
-  m_LocalPosition: {x: -0.0724, y: 0.0464, z: 0.1064}
-  m_LocalScale: {x: 0.110709146, y: 0.002794595, z: 0.056601483}
+  m_LocalRotation: {x: -0, y: -0.3422253, z: -0, w: 0.93961793}
+  m_LocalPosition: {x: -0.0727, y: 0.0464, z: 0.0971}
+  m_LocalScale: {x: 0.13599512, y: 0.002794595, z: 0.062012587}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 4343755042672905739}
-  m_LocalEulerAnglesHint: {x: 0, y: -46.152, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: -40.025, z: 0}
 --- !u!65 &1868507336
 BoxCollider:
   m_ObjectHideFlags: 0
