@@ -976,6 +976,47 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             faceSource.enabled = isLocalTrackingSource;
         }
 
+        // OVRFace is the live Quest Pro driver for this avatar. Remote
+        // instances must have no local component writing to the same blend
+        // shapes that ApplyFacePose writes below.
+        OVRFace[] directFaceDrivers =
+            _character.GetComponentsInChildren<OVRFace>(true);
+
+        foreach (OVRFace directFaceDriver in directFaceDrivers)
+        {
+            directFaceDriver.enabled = isLocalTrackingSource;
+        }
+
+        // The Suisei prefab also contains the Movement A2E sample pipeline.
+        // It is an alternative face driver, not a networking receiver. Keep it
+        // disabled when OVRFace is present, and always disable it remotely, so
+        // there is exactly one writer for each facial blend shape.
+        bool enableA2EFaceDriver =
+            isLocalTrackingSource && directFaceDrivers.Length == 0;
+
+        Meta.XR.Movement.FaceTracking.Samples.FaceDriver[] a2eFaceDrivers =
+            _character.GetComponentsInChildren<
+                Meta.XR.Movement.FaceTracking.Samples.FaceDriver
+            >(true);
+
+        foreach (Meta.XR.Movement.FaceTracking.Samples.FaceDriver faceDriver in
+                 a2eFaceDrivers)
+        {
+            faceDriver.enabled = enableA2EFaceDriver;
+        }
+
+        Meta.XR.Movement.FaceTracking.Samples.FaceRetargeterComponent[]
+            a2eRetargeters =
+                _character.GetComponentsInChildren<
+                    Meta.XR.Movement.FaceTracking.Samples.FaceRetargeterComponent
+                >(true);
+
+        foreach (Meta.XR.Movement.FaceTracking.Samples.FaceRetargeterComponent
+                 faceRetargeter in a2eRetargeters)
+        {
+            faceRetargeter.enabled = enableA2EFaceDriver;
+        }
+
         Meta.XR.Movement.Networking.NetworkCharacterHandler[]
             sampleHandlers =
                 _character.GetComponentsInChildren<
@@ -1177,13 +1218,112 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 CreateSequentialIndices(jointCount);
         }
 
-        if (!ContainsEverySequentialIndex(
-                _networkCharacterRetargeter.FaceIndicesToSync,
-                _configuredFaceShapeCount))
+        int[] trackedFaceIndices = CreateTrackedFaceIndices();
+
+        if (trackedFaceIndices.Length > 0)
         {
+            if (!ContainSameIndices(
+                    _networkCharacterRetargeter.FaceIndicesToSync,
+                    trackedFaceIndices))
+            {
+                _networkCharacterRetargeter.FaceIndicesToSync =
+                    trackedFaceIndices;
+            }
+        }
+        else if (!ContainsOnlyValidUniqueIndices(
+                     _networkCharacterRetargeter.FaceIndicesToSync,
+                     _configuredFaceShapeCount))
+        {
+            // Fall back to every configured shape for avatars that do not use
+            // OVRCustomFace. The Suisei avatar takes the tracked-only branch
+            // above, avoiding bandwidth for its static/emote blend shapes.
             _networkCharacterRetargeter.FaceIndicesToSync =
                 CreateSequentialIndices(_configuredFaceShapeCount);
         }
+    }
+
+    private int[] CreateTrackedFaceIndices()
+    {
+        if (_character == null || _configuredFaceShapeCount <= 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        OVRCustomFace[] customFaces =
+            _character.GetComponentsInChildren<OVRCustomFace>(true);
+
+        foreach (OVRCustomFace customFace in customFaces)
+        {
+            OVRFaceExpressions.FaceExpression[] mappings =
+                customFace.Mappings;
+
+            if (mappings == null ||
+                mappings.Length != _configuredFaceShapeCount)
+            {
+                continue;
+            }
+
+            var indices = new List<int>(mappings.Length);
+
+            for (int i = 0; i < mappings.Length; i++)
+            {
+                OVRFaceExpressions.FaceExpression expression = mappings[i];
+
+                if (expression < 0 ||
+                    expression >= OVRFaceExpressions.FaceExpression.Max)
+                {
+                    continue;
+                }
+
+                indices.Add(i);
+            }
+
+            return indices.ToArray();
+        }
+
+        return Array.Empty<int>();
+    }
+
+    private static bool ContainSameIndices(int[] left, int[] right)
+    {
+        if (left == null || right == null || left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            if (left[i] != right[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ContainsOnlyValidUniqueIndices(
+        int[] indices,
+        int upperExclusive)
+    {
+        if (indices == null || indices.Length == 0)
+        {
+            return upperExclusive == 0;
+        }
+
+        var seen = new bool[Mathf.Max(0, upperExclusive)];
+
+        foreach (int index in indices)
+        {
+            if (index < 0 || index >= upperExclusive || seen[index])
+            {
+                return false;
+            }
+
+            seen[index] = true;
+        }
+
+        return true;
     }
 
     private static bool ContainsEverySequentialIndex(
@@ -1738,7 +1878,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             );
 
             // -1 makes the sender abandon its delta baseline and produce a
-            // complete 105-joint/31-shape recovery snapshot.
+            // complete body/face recovery snapshot.
             SendAck(-1);
         }
 
