@@ -67638,6 +67638,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: CamScreenEye_folder_V2
       objectReference: {fileID: 0}
+    - target: {fileID: 2814066005940975460, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: screen
       value: 
@@ -84686,7 +84690,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7210588961324148922, guid: 83ac74914d8ca474aa1b802f85e834ce, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

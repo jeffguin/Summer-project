@@ -31,7 +31,8 @@ public sealed class ClapInteractionZone : MonoBehaviour
 
     [Tooltip("运行时添加到演员手掌上的球形碰撞探针半径（米）。")]
     [SerializeField, Min(0.005f)]
-    private float actorHandProbeRadius = 0.04f;
+    // private float actorHandProbeRadius = 0.04f;
+    private float actorHandProbeRadius = 0.1f;
 
     [Header("Diagnostics")]
     [SerializeField] private bool debugLog;
@@ -296,7 +297,12 @@ public sealed class ClapInteractionZone : MonoBehaviour
         if (probe == null)
         {
             GameObject probeObject = new GameObject(probeObjectName);
+
+            //note: generated actor probes inherit the same Layer as the audience
+            // i assigned a new layer for the audience clapping box   
+            // -jeff
             probeObject.layer = gameObject.layer;
+
             probe = probeObject.AddComponent<SphereCollider>();
             probeBody = probeObject.AddComponent<Rigidbody>();
             probe.enabled = false;
@@ -308,7 +314,10 @@ public sealed class ClapInteractionZone : MonoBehaviour
         if (probeBody == null)
             probeBody = probe.gameObject.AddComponent<Rigidbody>();
 
-        probe.isTrigger = false;
+        // probe.isTrigger = false;
+        //changed this line to:
+        probe.isTrigger = true;
+
         probe.center = Vector3.zero;
         probe.radius = actorHandProbeRadius;
 
