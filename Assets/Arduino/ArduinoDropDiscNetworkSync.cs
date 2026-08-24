@@ -176,13 +176,24 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
             sweetObject = sweetNetworkObject.gameObject;
         }
 
+        // controller.HandleSweetCollectedOnStateAuthority(
+        //     sweetObject
+        // );
+
+        // RPC_HandleSweetCollectedForEveryone();
+
+        // DespawnCollectedSweet(other);
+
         controller.HandleSweetCollectedOnStateAuthority(
             sweetObject
         );
 
         RPC_HandleSweetCollectedForEveryone();
 
-        DespawnCollectedSweet(other);
+        DespawnCollectedSweet(sweetNetworkObject);
+
+
+
     }
 
 
@@ -242,24 +253,33 @@ public sealed class ArduinoDropDiscNetworkSync : NetworkBehaviour
     }
 
 
-    private void DespawnCollectedSweet(Collider other)
-    {
-        if (other == null)
-            return;
+    // private void DespawnCollectedSweet(Collider other)
+    // {
+    //     if (other == null)
+    //         return;
 
-        NetworkObject sweetNetworkObject =
-            other.GetComponentInParent<NetworkObject>();
+    //     NetworkObject sweetNetworkObject =
+    //         other.GetComponentInParent<NetworkObject>();
 
-        if (sweetNetworkObject != null &&
-            sweetNetworkObject != Object &&
-            sweetNetworkObject.IsValid)
-        {
-            Runner.Despawn(sweetNetworkObject);
-            return;
-        }
+    //     if (sweetNetworkObject != null &&
+    //         sweetNetworkObject != Object &&
+    //         sweetNetworkObject.IsValid)
+    //     {
+    //         Runner.Despawn(sweetNetworkObject);
+    //         return;
+    //     }
 
-        Destroy(other.gameObject);
-    }
+    //     Destroy(other.gameObject);
+    // }
+
+    private void DespawnCollectedSweet(NetworkObject sweetNetworkObject)
+{
+    if (sweetNetworkObject == null ||
+        !sweetNetworkObject.IsValid)
+        return;
+
+    Runner.Despawn(sweetNetworkObject);
+}
 
 
     private void EnsureController()
