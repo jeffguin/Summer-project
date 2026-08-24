@@ -369,7 +369,8 @@ public class ViveRayNetworkPhysicalGrabAdapter : MonoBehaviour
 
         pendingGrabObject.RPC_RequestGrab(
             runner.LocalPlayer,
-            (int)grabRole
+            (int)grabRole,
+            (int)NetworkPhysicalGrabbable.GrabHand.None
         );
     }
 

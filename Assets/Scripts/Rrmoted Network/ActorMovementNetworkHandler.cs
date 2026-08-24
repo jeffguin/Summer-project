@@ -802,6 +802,17 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 );
         }
 
+        AvatarHandAnchorProvider handAnchorProvider =
+            _character.GetComponent<AvatarHandAnchorProvider>();
+
+        if (handAnchorProvider == null)
+        {
+            handAnchorProvider =
+                _character.AddComponent<AvatarHandAnchorProvider>();
+        }
+
+        handAnchorProvider.ResolveReferences();
+
         if (_networkCharacterRetargeter == null)
         {
             LogSetupFailure(

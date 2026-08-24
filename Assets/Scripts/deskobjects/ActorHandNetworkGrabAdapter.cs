@@ -301,7 +301,10 @@ public class ActorHandNetworkGrabAdapter : MonoBehaviour
 
         grabbedObject.RPC_RequestGrab(
             runner.LocalPlayer,
-            (int)grabRole
+            (int)grabRole,
+            handSide == ActorHandSide.Left
+                ? (int)NetworkPhysicalGrabbable.GrabHand.Left
+                : (int)NetworkPhysicalGrabbable.GrabHand.Right
         );
 
         SendGrabTargetImmediately();

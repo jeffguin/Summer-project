@@ -13,6 +13,13 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         Audience = 2
     }
 
+    public enum GrabHand
+    {
+        None = 0,
+        Left = 1,
+        Right = 2
+    }
+
     [Header("Physics")]
     [SerializeField] private Rigidbody rb;
 
@@ -41,6 +48,15 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     [Networked] public NetworkBool IsGrabbed { get; private set; }
     [Networked] public PlayerRef GrabbedByPlayer { get; private set; }
     [Networked] public int GrabbedByRoleValue { get; private set; }
+    [Networked] public int GrabbedHandValue { get; private set; }
+
+    [Networked]
+    public NetworkBool UsesAvatarHandAttachment { get; private set; }
+
+    [Networked] private Vector3 AvatarHandPositionOffset { get; set; }
+    [Networked] private Quaternion AvatarHandRotationOffset { get; set; }
+    [Networked] private NetworkBool AvatarHandOffsetIsValid { get; set; }
+    [Networked] private NetworkBool HasReceivedGrabTarget { get; set; }
 
     [Networked] public Vector3 TargetPosition { get; private set; }
     [Networked] public Quaternion TargetRotation { get; private set; }
@@ -56,6 +72,7 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     private int moveDebugCounter = 0;
 
     public GrabRole CurrentGrabRole => (GrabRole)GrabbedByRoleValue;
+    public GrabHand CurrentGrabHand => (GrabHand)GrabbedHandValue;
 
     private void Awake()
     {
@@ -106,6 +123,12 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             IsGrabbed = false;
             GrabbedByPlayer = default;
             GrabbedByRoleValue = (int)GrabRole.None;
+            GrabbedHandValue = (int)GrabHand.None;
+            UsesAvatarHandAttachment = false;
+            AvatarHandPositionOffset = Vector3.zero;
+            AvatarHandRotationOffset = Quaternion.identity;
+            AvatarHandOffsetIsValid = false;
+            HasReceivedGrabTarget = false;
             ReleaseCooldownTimer = TickTimer.None;
 
             if (rb != null)
@@ -115,6 +138,16 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }
+        }
+        else if (rb != null)
+        {
+            // Only State Authority simulates the held/released rigidbody.
+            // Proxies are driven by NetworkTransform and the late wrist
+            // correction below.
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
         }
 
         DebugMessage(
@@ -133,8 +166,32 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
 
         if (IsGrabbed)
         {
+            UpdateTargetFromAvatarHand();
             MoveTowardsTarget();
             EstimateVelocity();
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (Object == null ||
+            !Object.IsValid ||
+            Object.HasStateAuthority ||
+            !IsGrabbed ||
+            !UsesAvatarHandAttachment ||
+            !AvatarHandOffsetIsValid)
+        {
+            return;
+        }
+
+        if (TryGetAvatarHandAttachmentPose(
+                out Vector3 position,
+                out Quaternion rotation))
+        {
+            // NetworkTransform remains authoritative for the released pose and
+            // physics state. On proxies, this late visual correction keeps the
+            // held object locked to the same interpolated wrist as the avatar.
+            transform.SetPositionAndRotation(position, rotation);
         }
     }
 
@@ -230,13 +287,17 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-    public void RPC_RequestGrab(PlayerRef requester, int requesterRoleValue)
+    public void RPC_RequestGrab(
+        PlayerRef requester,
+        int requesterRoleValue,
+        int requesterHandValue)
     {
         GrabRole requesterRole = (GrabRole)requesterRoleValue;
+        GrabHand requesterHand = SanitizeGrabHand(requesterHandValue);
 
         DebugMessage(
             $"RPC_RequestGrab received. " +
-            $"Requester={requester}, Role={requesterRole}, " +
+            $"Requester={requester}, Role={requesterRole}, Hand={requesterHand}, " +
             $"IsGrabbed={IsGrabbed}, CurrentOwner={GrabbedByPlayer}, CurrentRole={CurrentGrabRole}, " +
             $"CooldownRunning={ReleaseCooldownTimer.IsRunning}, " +
             $"CooldownExpiredOrNotRunning={ReleaseCooldownTimer.ExpiredOrNotRunning(Runner)}"
@@ -270,6 +331,15 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         IsGrabbed = true;
         GrabbedByPlayer = requester;
         GrabbedByRoleValue = requesterRoleValue;
+        GrabbedHandValue = (int)requesterHand;
+
+        UsesAvatarHandAttachment =
+            requesterRole == GrabRole.Actor &&
+            requesterHand != GrabHand.None;
+        AvatarHandPositionOffset = Vector3.zero;
+        AvatarHandRotationOffset = Quaternion.identity;
+        AvatarHandOffsetIsValid = false;
+        HasReceivedGrabTarget = false;
 
         TargetPosition = transform.position;
         TargetRotation = transform.rotation;
@@ -289,7 +359,9 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         }
 
         DebugMessage(
-            $"Grab accepted. Owner={GrabbedByPlayer}, Role={CurrentGrabRole}"
+            $"Grab accepted. Owner={GrabbedByPlayer}, Role={CurrentGrabRole}, " +
+            $"Hand={CurrentGrabHand}, " +
+            $"AvatarAttachment={UsesAvatarHandAttachment}"
         );
 
         if (interactionAudio != null)
@@ -333,8 +405,18 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             return;
         }
 
-        TargetPosition = targetPosition;
-        TargetRotation = targetRotation;
+        HasReceivedGrabTarget = true;
+
+        if (UsesAvatarHandAttachment &&
+            TryInitializeAvatarHandOffset(targetPosition, targetRotation))
+        {
+            UpdateTargetFromAvatarHand();
+        }
+        else
+        {
+            TargetPosition = targetPosition;
+            TargetRotation = targetRotation;
+        }
 
         if (debugMoveLog)
         {
@@ -380,6 +462,12 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         IsGrabbed = false;
         GrabbedByPlayer = default;
         GrabbedByRoleValue = (int)GrabRole.None;
+        GrabbedHandValue = (int)GrabHand.None;
+        UsesAvatarHandAttachment = false;
+        AvatarHandPositionOffset = Vector3.zero;
+        AvatarHandRotationOffset = Quaternion.identity;
+        AvatarHandOffsetIsValid = false;
+        HasReceivedGrabTarget = false;
 
         if (releaseCooldown > 0f)
         {
@@ -429,6 +517,12 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         IsGrabbed = false;
         GrabbedByPlayer = default;
         GrabbedByRoleValue = (int)GrabRole.None;
+        GrabbedHandValue = (int)GrabHand.None;
+        UsesAvatarHandAttachment = false;
+        AvatarHandPositionOffset = Vector3.zero;
+        AvatarHandRotationOffset = Quaternion.identity;
+        AvatarHandOffsetIsValid = false;
+        HasReceivedGrabTarget = false;
 
         TargetPosition = resetPosition;
         TargetRotation = resetRotation;
@@ -484,6 +578,102 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         return IsGrabbed &&
                GrabbedByPlayer == player &&
                CurrentGrabRole == role;
+    }
+
+    private static GrabHand SanitizeGrabHand(int handValue)
+    {
+        return handValue switch
+        {
+            (int)GrabHand.Left => GrabHand.Left,
+            (int)GrabHand.Right => GrabHand.Right,
+            _ => GrabHand.None
+        };
+    }
+
+    private bool TryGetAvatarHandAnchor(out Transform anchor)
+    {
+        anchor = null;
+
+        return UsesAvatarHandAttachment &&
+               CurrentGrabRole == GrabRole.Actor &&
+               CurrentGrabHand != GrabHand.None &&
+               AvatarHandAnchorProvider.TryGetAnchor(
+                   GrabbedByPlayer,
+                   CurrentGrabHand,
+                   out anchor
+               );
+    }
+
+    private bool TryInitializeAvatarHandOffset(
+        Vector3 objectPosition,
+        Quaternion objectRotation)
+    {
+        if (AvatarHandOffsetIsValid)
+        {
+            return true;
+        }
+
+        if (!TryGetAvatarHandAnchor(out Transform anchor))
+        {
+            return false;
+        }
+
+        // Use rotation-only offsets so the avatar's non-uniform wrist/anchor
+        // scale cannot distort or resize held network objects.
+        AvatarHandPositionOffset =
+            Quaternion.Inverse(anchor.rotation) *
+            (objectPosition - anchor.position);
+        AvatarHandRotationOffset =
+            (Quaternion.Inverse(anchor.rotation) * objectRotation).normalized;
+        AvatarHandOffsetIsValid = true;
+        return true;
+    }
+
+    private bool TryGetAvatarHandAttachmentPose(
+        out Vector3 position,
+        out Quaternion rotation)
+    {
+        position = default;
+        rotation = Quaternion.identity;
+
+        if (!AvatarHandOffsetIsValid ||
+            !TryGetAvatarHandAnchor(out Transform anchor))
+        {
+            return false;
+        }
+
+        position =
+            anchor.position + anchor.rotation * AvatarHandPositionOffset;
+        rotation =
+            (anchor.rotation * AvatarHandRotationOffset).normalized;
+        return true;
+    }
+
+    private void UpdateTargetFromAvatarHand()
+    {
+        if (!UsesAvatarHandAttachment)
+        {
+            return;
+        }
+
+        if (!HasReceivedGrabTarget)
+        {
+            return;
+        }
+
+        if (!AvatarHandOffsetIsValid &&
+            !TryInitializeAvatarHandOffset(TargetPosition, TargetRotation))
+        {
+            return;
+        }
+
+        if (TryGetAvatarHandAttachmentPose(
+                out Vector3 position,
+                out Quaternion rotation))
+        {
+            TargetPosition = position;
+            TargetRotation = rotation;
+        }
     }
 
     public bool CanBeGrabbed()
