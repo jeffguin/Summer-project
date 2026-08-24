@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Meta.XR.Movement.Networking;
 using Meta.XR.Movement.Networking.Local;
 using Meta.XR.Movement.Retargeting;
+using Oculus.Interaction.Input;
 #if FUSION2
 using Meta.XR.Movement.Networking.Fusion;
 #endif
@@ -789,6 +790,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return false;
         }
 
+        if (!TryConfigureIsdkSourceProcessor())
+        {
+            return false;
+        }
+
         ApplyOwnership();
         ConfigureTrackingComponentsForOwnership();
 
@@ -893,6 +899,90 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             $"{(IsRemoteContinuousDeserializeMode ? IsolationOutputGuardElementCount : 0)}, " +
             $"StaleTimeout={_stalePacketTimeoutSeconds:F2}s, " +
             $"ValidatePoseConfigured={_validateReceivedPose}.",
+            this
+        );
+
+        return true;
+    }
+
+    private bool TryConfigureIsdkSourceProcessor()
+    {
+        ISDKSkeletalProcessor isdkProcessor =
+            _networkCharacterRetargeter
+                .GetSourceProcessor<ISDKSkeletalProcessor>();
+
+        if (isdkProcessor == null)
+        {
+            return true;
+        }
+
+        if (!_characterBehaviour.HasInputAuthority)
+        {
+            LogSetupFailure(
+                "The remote character prefab contains an ISDK source " +
+                "processor. Remove its Source Processor Container so the " +
+                "remote avatar is driven only by received network poses."
+            );
+            return false;
+        }
+
+        OVRCameraRig cameraRig = OVRManager.instance != null
+            ? OVRManager.instance.GetComponentInChildren<OVRCameraRig>(true)
+            : null;
+
+        cameraRig ??=
+            UnityEngine.Object.FindFirstObjectByType<OVRCameraRig>(
+                FindObjectsInactive.Include
+            );
+
+        if (cameraRig == null)
+        {
+            LogSetupFailure(
+                "The local actor OVRCameraRig was not found while binding " +
+                "the Movement ISDK source processor."
+            );
+            return false;
+        }
+
+        SyntheticHand leftHand = null;
+        SyntheticHand rightHand = null;
+
+        SyntheticHand[] syntheticHands =
+            cameraRig.GetComponentsInChildren<SyntheticHand>(true);
+
+        foreach (SyntheticHand syntheticHand in syntheticHands)
+        {
+            switch (syntheticHand.Handedness)
+            {
+                case Handedness.Left:
+                    leftHand = syntheticHand;
+                    break;
+                case Handedness.Right:
+                    rightHand = syntheticHand;
+                    break;
+            }
+        }
+
+        if (leftHand == null || rightHand == null)
+        {
+            LogSetupFailure(
+                "Both SyntheticHand components must be children of the " +
+                "local actor OVRCameraRig before the network avatar can use " +
+                "ISDK object hand poses."
+            );
+            return false;
+        }
+
+        // CharacterRetargeter.Setup initializes and caches these IHand
+        // references. They must be assigned before Setup is called below.
+        isdkProcessor.CameraRig = cameraRig;
+        isdkProcessor.LeftHand = leftHand.gameObject;
+        isdkProcessor.RightHand = rightHand.gameObject;
+
+        Debug.Log(
+            "ActorMovementNetworkHandler: Bound Movement ISDK sources. " +
+            $"CameraRig={cameraRig.name}, LeftHand={leftHand.name}, " +
+            $"RightHand={rightHand.name}.",
             this
         );
 

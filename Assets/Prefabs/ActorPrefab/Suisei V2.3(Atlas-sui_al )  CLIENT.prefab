@@ -4812,16 +4812,7 @@ MonoBehaviour:
     _currentScale: 1
     _headScaleFactor: 0.95
     _scaleRange: {x: 0.8, y: 1.2}
-  _sourceProcessorContainers:
-  - _currentProcessorType: 1
-    _isdkProcessor:
-      _weight: 1
-      _isFoldoutExpanded: 1
-      _cameraRig: {fileID: 0}
-      _leftHand: {fileID: 0}
-      _rightHand: {fileID: 0}
-      _moveHandBackToOriginalPosition: 1
-      _maxDisplacementDistance: 0.05
+  _sourceProcessorContainers: []
   _targetProcessorContainers: []
   _ownership: 2
   _compressionType: 0
