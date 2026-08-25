@@ -5,25 +5,27 @@ using UnityEngine;
 public class PortalCameraController : MonoBehaviour
 {
     [Header("Physical Setup")]
-    public Transform screen;   // The PhysicalScreen Quad
-    public Transform eye;      // The Tracked Eye / Head
+    public Transform screen;
+    public Transform eye;
 
-    [Header("Adaptive FOV Limiting")]
-    [Tooltip("Distance from the physical screen where FOV limiting begins.")]
-    [Min(0.01f)]
-    public float fovLimitStartDistance = 1.0f;
+    [Header("Adaptive Projection")]
+    public float idealMinDistance = 0.6f;
+    public float idealMaxDistance = 1.5f;
 
-    [Tooltip("Distance over which the FOV smoothly transitions from normal to the maximum FOV.")]
-    [Min(0.001f)]
-    public float transitionDistance = 0.3f;
+    public float closeLimitDistance = 0.3f;
+    public float farLimitDistance = 3.0f;
 
-    [Tooltip("Maximum horizontal FOV allowed when the audience is close to the screen.")]
-    [Range(1f, 179f)]
-    public float maximumHorizontalFOV = 80f;
+    public float maximumEffectiveCloseDistance = 0.6f;
+    public float minimumEffectiveFarDistance = 1.5f;
 
-    [Tooltip("Maximum vertical FOV allowed when the audience is close to the screen.")]
-    [Range(1f, 179f)]
-    public float maximumVerticalFOV = 60f;
+    [Header("Cadre")]
+    [Tooltip("Cadre used as the portal boundary.")]
+    public Transform cadre;
+
+    [Tooltip("Enable the cadre when the audience exceeds the far limit.")]
+    public bool enableCadreAtFarLimit = true;
+
+    public bool IsBeyondFarLimit { get; private set; }
 
     private Camera cam;
 
@@ -31,7 +33,6 @@ public class PortalCameraController : MonoBehaviour
     {
         cam = GetComponent<Camera>();
 
-        // Reset matrices to ensure always starting from a clean slate
         cam.ResetProjectionMatrix();
         cam.ResetWorldToCameraMatrix();
     }
@@ -46,79 +47,108 @@ public class PortalCameraController : MonoBehaviour
 
     void UpdateCamera()
     {
+        // ---------------------------------------------
+        // SCREEN CORNERS
+        // ---------------------------------------------
 
-        // Get the four corners of the 1x1 Unity Quad
-        Vector3 bl = screen.TransformPoint(
-            new Vector3(-0.5f, -0.5f, 0f)
-        );
+        Vector3 bl =
+            screen.TransformPoint(
+                new Vector3(-0.5f, -0.5f, 0f)
+            );
 
-        Vector3 br = screen.TransformPoint(
-            new Vector3(0.5f, -0.5f, 0f)
-        );
+        Vector3 br =
+            screen.TransformPoint(
+                new Vector3(0.5f, -0.5f, 0f)
+            );
 
-        Vector3 tl = screen.TransformPoint(
-            new Vector3(-0.5f, 0.5f, 0f)
-        );
+        Vector3 tl =
+            screen.TransformPoint(
+                new Vector3(-0.5f, 0.5f, 0f)
+            );
 
+        // ---------------------------------------------
+        // SCREEN BASIS
+        // ---------------------------------------------
 
+        Vector3 vr =
+            (br - bl).normalized;
 
-        Vector3 vr = (br - bl).normalized;
-        Vector3 vu = (tl - bl).normalized;
-        Vector3 vn = Vector3.Cross(vr, vu).normalized;
+        Vector3 vu =
+            (tl - bl).normalized;
+
+        Vector3 vn =
+            Vector3.Cross(vr, vu).normalized;
 
         Vector3 eyePos = eye.position;
 
-        // Ensure the normal vector points TOWARD the eye
         if (Vector3.Dot(vn, eyePos - bl) < 0f)
             vn = -vn;
 
+        // ---------------------------------------------
+        // ACTUAL DISTANCE
+        // ---------------------------------------------
 
-        // DISTANCE AND CLIP PLANES
+        float actualDistance =
+            Vector3.Dot(
+                eyePos - bl,
+                vn
+            );
+
+        actualDistance =
+            Mathf.Max(
+                actualDistance,
+                0.01f
+            );
+
+        IsBeyondFarLimit =
+            actualDistance > farLimitDistance;
+
+        // ---------------------------------------------
+        // EFFECTIVE DISTANCE
+        // ---------------------------------------------
+
+        float effectiveDistance =
+            CalculateEffectiveDistance(
+                actualDistance
+            );
+
+        // ---------------------------------------------
+        // CLIP PLANES
+        // ---------------------------------------------
+
         float near = cam.nearClipPlane;
         float far = cam.farClipPlane;
-        // Perpendicular distance from eye to the screen plane
-        float d = Vector3.Dot(
-            eyePos - bl,
-            vn
-        );
 
-        d = Mathf.Max(d, 0.01f);
-
-
-        // NORMAL OFF-AXIS FRUSTUM
-
+        // ---------------------------------------------
+        // OFF-AXIS FRUSTUM
+        //
+        // This remains the wide adaptive projection.
+        // The cadre does NOT modify these values.
+        // ---------------------------------------------
 
         float left =
-            Vector3.Dot(vr, bl - eyePos)
-            * near / d;
+            Vector3.Dot(
+                vr,
+                bl - eyePos
+            ) * near / effectiveDistance;
 
         float right =
-            Vector3.Dot(vr, br - eyePos)
-            * near / d;
+            Vector3.Dot(
+                vr,
+                br - eyePos
+            ) * near / effectiveDistance;
 
         float bottom =
-            Vector3.Dot(vu, bl - eyePos)
-            * near / d;
+            Vector3.Dot(
+                vu,
+                bl - eyePos
+            ) * near / effectiveDistance;
 
         float top =
-            Vector3.Dot(vu, tl - eyePos)
-            * near / d;
-
-
-        // Flexible FOV limits
-   
-
-        ApplyAdaptiveFOVLimit(
-            ref left,
-            ref right,
-            ref bottom,
-            ref top,
-            near,
-            d
-        );
-
-  
-
+            Vector3.Dot(
+                vu,
+                tl - eyePos
+            ) * near / effectiveDistance;
 
         cam.projectionMatrix =
             Matrix4x4.Frustum(
@@ -130,15 +160,19 @@ public class PortalCameraController : MonoBehaviour
                 far
             );
 
-        // OBLIQUE NEAR CLIP PLANE
-       
+        // ---------------------------------------------
+        // OBLIQUE CLIPPING
+        //
+        // The physical screen remains the portal plane.
+        // ---------------------------------------------
 
-        // Calculate the physical screen plane
         Vector3 cameraSpaceNormal =
-            cam.worldToCameraMatrix.MultiplyVector(vn);
+            cam.worldToCameraMatrix
+                .MultiplyVector(vn);
 
         Vector3 cameraSpacePoint =
-            cam.worldToCameraMatrix.MultiplyPoint(bl);
+            cam.worldToCameraMatrix
+                .MultiplyPoint(bl);
 
         float distanceToPlane =
             -Vector3.Dot(
@@ -146,190 +180,115 @@ public class PortalCameraController : MonoBehaviour
                 cameraSpacePoint
             );
 
-        // Create the plane vector
-        Vector4 clipPlane = new Vector4(
-            cameraSpaceNormal.x,
-            cameraSpaceNormal.y,
-            cameraSpaceNormal.z,
-            distanceToPlane
-        );
+        Vector4 clipPlane =
+            new Vector4(
+                cameraSpaceNormal.x,
+                cameraSpaceNormal.y,
+                cameraSpaceNormal.z,
+                distanceToPlane
+            );
 
-        // Make the projection matrix respect the physical screen
         cam.projectionMatrix =
-            cam.CalculateObliqueMatrix(clipPlane);
+            cam.CalculateObliqueMatrix(
+                clipPlane
+            );
 
-        // --------------------------------------------------
-        // 8. CAMERA POSITION & ROTATION
-        // --------------------------------------------------
+        // ---------------------------------------------
+        // CAMERA TRANSFORM
+        // ---------------------------------------------
 
-        cam.transform.position = eyePos;
+        cam.transform.position =
+            eyePos;
 
-        // Look into the screen while keeping screen-up
         cam.transform.rotation =
             Quaternion.LookRotation(
                 -vn,
                 vu
             );
+
+        // ---------------------------------------------
+        // CADRE STATE
+        // ---------------------------------------------
+
+        if (cadre != null)
+        {
+            bool shouldShowCadre =
+                enableCadreAtFarLimit &&
+                IsBeyondFarLimit;
+
+            cadre.gameObject.SetActive(
+                shouldShowCadre
+            );
+        }
     }
 
-    private void ApplyAdaptiveFOVLimit(
-        ref float left,
-        ref float right,
-        ref float bottom,
-        ref float top,
-        float near,
-        float distance
+    float CalculateEffectiveDistance(
+        float actualDistance
     )
     {
-        // --------------------------------------------------
-        // Calculate how much FOV limiting should be applied
-        // --------------------------------------------------
+        // ---------------------------------------------
+        // IDEAL ZONE
+        // ---------------------------------------------
 
-        float transitionStart =
-            fovLimitStartDistance;
+        if (actualDistance >= idealMinDistance &&
+            actualDistance <= idealMaxDistance)
+        {
+            return actualDistance;
+        }
 
-        float transitionEnd =
-            Mathf.Max(
-                0.01f,
-                fovLimitStartDistance - transitionDistance
-            );
+        // ---------------------------------------------
+        // TOO CLOSE
+        // ---------------------------------------------
 
-        // Farther than the start distance:
-        // no FOV limitation.
-        if (distance >= transitionStart)
-            return;
+        if (actualDistance < idealMinDistance)
+        {
+            float t =
+                Mathf.InverseLerp(
+                    closeLimitDistance,
+                    idealMinDistance,
+                    actualDistance
+                );
 
-        // Calculate transition amount.
-        //
-        // 0 = normal FOV
-        // 1 = maximum FOV limitation
-        float t = Mathf.InverseLerp(
-            transitionStart,
-            transitionEnd,
-            distance
-        );
+            t = Mathf.Clamp01(t);
 
-        // Smooth the transition so there is no sudden change.
-        t = Mathf.SmoothStep(
-            0f,
-            1f,
-            t
-        );
+            t =
+                Mathf.SmoothStep(
+                    0f,
+                    1f,
+                    t
+                );
 
-        // --------------------------------------------------
-        // Current FOV
-        // --------------------------------------------------
-
-        float currentHorizontalFOV =
-            Mathf.Atan2(right, near) -
-            Mathf.Atan2(left, near);
-
-        currentHorizontalFOV *= Mathf.Rad2Deg;
-
-        float currentVerticalFOV =
-            Mathf.Atan2(top, near) -
-            Mathf.Atan2(bottom, near);
-
-        currentVerticalFOV *= Mathf.Rad2Deg;
-
-        // --------------------------------------------------
-        // Calculate target FOV
-        // --------------------------------------------------
-
-        float targetHorizontalFOV =
-            Mathf.Min(
-                currentHorizontalFOV,
-                maximumHorizontalFOV
-            );
-
-        float targetVerticalFOV =
-            Mathf.Min(
-                currentVerticalFOV,
-                maximumVerticalFOV
-            );
-
-        // Interpolate between normal and limited FOV.
-        float desiredHorizontalFOV =
-            Mathf.Lerp(
-                currentHorizontalFOV,
-                targetHorizontalFOV,
+            return Mathf.Lerp(
+                maximumEffectiveCloseDistance,
+                idealMinDistance,
                 t
             );
+        }
 
-        float desiredVerticalFOV =
-            Mathf.Lerp(
-                currentVerticalFOV,
-                targetVerticalFOV,
-                t
+        // ---------------------------------------------
+        // TOO FAR
+        // ---------------------------------------------
+
+        float farT =
+            Mathf.InverseLerp(
+                idealMaxDistance,
+                farLimitDistance,
+                actualDistance
             );
 
-        // --------------------------------------------------
-        // Scale the frustum around its CURRENT centre
-        //
-        // This is important for off-axis projection.
-        // We don't recenter the projection.
-        // --------------------------------------------------
+        farT = Mathf.Clamp01(farT);
 
-        float horizontalScale =
-            Mathf.Tan(
-                desiredHorizontalFOV *
-                0.5f *
-                Mathf.Deg2Rad
-            )
-            /
-            Mathf.Tan(
-                currentHorizontalFOV *
-                0.5f *
-                Mathf.Deg2Rad
+        farT =
+            Mathf.SmoothStep(
+                0f,
+                1f,
+                farT
             );
 
-        float verticalScale =
-            Mathf.Tan(
-                desiredVerticalFOV *
-                0.5f *
-                Mathf.Deg2Rad
-            )
-            /
-            Mathf.Tan(
-                currentVerticalFOV *
-                0.5f *
-                Mathf.Deg2Rad
-            );
-
-        // Horizontal centre of the existing
-        // off-axis frustum.
-        float horizontalCentre =
-            (left + right) * 0.5f;
-
-        float horizontalHalfWidth =
-            (right - left) * 0.5f;
-
-        horizontalHalfWidth *= horizontalScale;
-
-        left =
-            horizontalCentre -
-            horizontalHalfWidth;
-
-        right =
-            horizontalCentre +
-            horizontalHalfWidth;
-
-        // Vertical centre of the existing
-        // off-axis frustum.
-        float verticalCentre =
-            (bottom + top) * 0.5f;
-
-        float verticalHalfHeight =
-            (top - bottom) * 0.5f;
-
-        verticalHalfHeight *= verticalScale;
-
-        bottom =
-            verticalCentre -
-            verticalHalfHeight;
-
-        top =
-            verticalCentre +
-            verticalHalfHeight;
+        return Mathf.Lerp(
+            idealMaxDistance,
+            minimumEffectiveFarDistance,
+            farT
+        );
     }
 }
