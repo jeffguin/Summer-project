@@ -428,7 +428,7 @@ MonoBehaviour:
   m_RootBones:
   - {fileID: 576148877314373591}
   m_EndBones: []
-  m_Material: {fileID: 11400000, guid: ce02265f3c7c47d42a8bd85329838232, type: 2}
+  m_Material: {fileID: 11400000, guid: 684a96233bb81174b9a9eafd92d42a51, type: 2}
   m_StartDepth: 1
   m_SiblingConstraints: 0
   m_ClosedSiblings: 0
@@ -2852,6 +2852,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3311363413551015922}
+  - component: {fileID: 1599126404103446015}
   m_Layer: 0
   m_Name: Armature
   m_TagString: Untagged
@@ -2875,6 +2876,148 @@ Transform:
   - {fileID: 4643489333291270777}
   m_Father: {fileID: 7317969673682648162}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1599126404103446015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3608516766112463251}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2d8418b0b9634b1892b0268dd9c2743, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  boneShape: 1
+  drawBones: 1
+  drawTripods: 0
+  boneSize: 1
+  tripodSize: 1
+  boneColor: {r: 0, g: 0, b: 1, a: 0.5}
+  m_Transforms:
+  - {fileID: 3311363413551015922}
+  - {fileID: 4643489333291270777}
+  - {fileID: 6118923455001135964}
+  - {fileID: 2234637714126312318}
+  - {fileID: 613191505304991585}
+  - {fileID: 7076087021751806527}
+  - {fileID: 2611100359398993435}
+  - {fileID: 6114716946846791693}
+  - {fileID: 9037952300410671947}
+  - {fileID: 3688838182555505326}
+  - {fileID: 2793078653672206184}
+  - {fileID: 8573179980919491741}
+  - {fileID: 6259383629580281053}
+  - {fileID: 7030652262184850904}
+  - {fileID: 4030111000220564074}
+  - {fileID: 5526398782844361919}
+  - {fileID: 7555587154755030268}
+  - {fileID: 4647611017909837575}
+  - {fileID: 2736993551637196733}
+  - {fileID: 4636404053302852635}
+  - {fileID: 2029816950223143097}
+  - {fileID: 576148877314373591}
+  - {fileID: 5258784670262051857}
+  - {fileID: 9157186385247030247}
+  - {fileID: 6540707129647682742}
+  - {fileID: 462234105990380903}
+  - {fileID: 7215533827185672822}
+  - {fileID: 4804421635186532884}
+  - {fileID: 8418178861476090782}
+  - {fileID: 2360586043921170970}
+  - {fileID: 5451442180030241019}
+  - {fileID: 1538353988494985693}
+  - {fileID: 6490764875646107071}
+  - {fileID: 7726360389550672139}
+  - {fileID: 5656674165403966116}
+  - {fileID: 7207734322680164294}
+  - {fileID: 7364862881709109018}
+  - {fileID: 7878662955765039992}
+  - {fileID: 5781636664207231626}
+  - {fileID: 1134408490390656997}
+  - {fileID: 4375423093656574802}
+  - {fileID: 5180072347757492671}
+  - {fileID: 7658411374918126886}
+  - {fileID: 8550963724359824573}
+  - {fileID: 3981505218652224943}
+  - {fileID: 2281892093278970587}
+  - {fileID: 5863066011823101747}
+  - {fileID: 2550175671337060434}
+  - {fileID: 4926104724196604900}
+  - {fileID: 6717106002752546699}
+  - {fileID: 7721264740497824335}
+  - {fileID: 2237986781131784658}
+  - {fileID: 7410417534564808101}
+  - {fileID: 5088653928112893986}
+  - {fileID: 1634749850804420356}
+  - {fileID: 2163688838383866515}
+  - {fileID: 6737590606080374364}
+  - {fileID: 3202448230369246582}
+  - {fileID: 8477859431238548723}
+  - {fileID: 1118918516838030289}
+  - {fileID: 8663451362098871705}
+  - {fileID: 7785608662994062329}
+  - {fileID: 1317533784545273996}
+  - {fileID: 7499458274417660968}
+  - {fileID: 8858163757883635808}
+  - {fileID: 7952452488882834292}
+  - {fileID: 8349035150066128603}
+  - {fileID: 8077750156202533680}
+  - {fileID: 1128403129145770252}
+  - {fileID: 2562008259532948908}
+  - {fileID: 3495079484180858508}
+  - {fileID: 3017463385040814070}
+  - {fileID: 7209698700129153915}
+  - {fileID: 2971595523836021250}
+  - {fileID: 8977851526760532719}
+  - {fileID: 8349145958558554469}
+  - {fileID: 1432026268257679650}
+  - {fileID: 5809777256588690813}
+  - {fileID: 5168215021005391350}
+  - {fileID: 4231951749260507621}
+  - {fileID: 5173023666524917840}
+  - {fileID: 2210909348692837187}
+  - {fileID: 1164991104890752801}
+  - {fileID: 2612249182025726116}
+  - {fileID: 886651790257653469}
+  - {fileID: 5534427770653350717}
+  - {fileID: 4714597488973347166}
+  - {fileID: 5533011088074037912}
+  - {fileID: 9216791337200182305}
+  - {fileID: 3672147749776657723}
+  - {fileID: 3579018692146360966}
+  - {fileID: 6126121674294151888}
+  - {fileID: 9108607724662164163}
+  - {fileID: 766165537357208949}
+  - {fileID: 1746680172081707803}
+  - {fileID: 7972187738445784430}
+  - {fileID: 5757429067137008124}
+  - {fileID: 8561834146337110988}
+  - {fileID: 8857545897495650906}
+  - {fileID: 263214558470304419}
+  - {fileID: 1251195657373101089}
+  - {fileID: 2973958640484479885}
+  - {fileID: 4039449875163497813}
+  - {fileID: 664229730079181429}
+  - {fileID: 5721286877202415521}
+  - {fileID: 2948318310983616681}
+  - {fileID: 4339469351001801548}
+  - {fileID: 338500420812839343}
+  - {fileID: 6968885398173620736}
+  - {fileID: 605193304424830092}
+  - {fileID: 6311718711673233264}
+  - {fileID: 5836225310870108431}
+  - {fileID: 2238286628136790331}
+  - {fileID: 5691600510582134807}
+  - {fileID: 5762088133665872873}
+  - {fileID: 7975578021250270555}
+  - {fileID: 8970588120406105943}
+  - {fileID: 324371839481552408}
+  - {fileID: 1716329644014894219}
+  - {fileID: 7398827555598916748}
+  - {fileID: 2532502872782161189}
+  - {fileID: 8513279948059033760}
+  - {fileID: 3859027800899929479}
 --- !u!1 &3623359995598976886
 GameObject:
   m_ObjectHideFlags: 0
@@ -4202,7 +4345,7 @@ GameObject:
   - component: {fileID: 2737761293146436041}
   - component: {fileID: 2402913328392791106}
   m_Layer: 0
-  m_Name: Suisei V2.3(Atlas-sui_al )  Variant
+  m_Name: Suisei V2.3(Atlas-sui_al )  CLIENT
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -4680,7 +4823,7 @@ MonoBehaviour:
       _moveHandBackToOriginalPosition: 1
       _maxDisplacementDistance: 0.05
   _targetProcessorContainers: []
-  _ownership: 0
+  _ownership: 2
   _compressionType: 0
   _useDeltaCompression: 1
   _useSyncInterval: 1
@@ -6317,7 +6460,7 @@ MonoBehaviour:
   - {fileID: 2611100359398993435}
   m_EndBones:
   - {fileID: 7555587154755030268}
-  m_Material: {fileID: 11400000, guid: ce02265f3c7c47d42a8bd85329838232, type: 2}
+  m_Material: {fileID: 11400000, guid: efcb9885402e6874eadefeada407df7f, type: 2}
   m_StartDepth: 0
   m_SiblingConstraints: 1
   m_ClosedSiblings: 1
