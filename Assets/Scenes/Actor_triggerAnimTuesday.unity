@@ -8958,7 +8958,7 @@ GameObject:
   - component: {fileID: 165820049}
   - component: {fileID: 165820048}
   m_Layer: 0
-  m_Name: Cube
+  m_Name: Grey table
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -35603,11 +35603,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
---- !u!1 &568567618 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 5574942240849701003, guid: bf9301bfc069d594d9c251248f7b96a3, type: 3}
-  m_PrefabInstance: {fileID: 568567617}
-  m_PrefabAsset: {fileID: 0}
 --- !u!43 &571137549
 Mesh:
   m_ObjectHideFlags: 0
@@ -42590,6 +42585,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!114 &661725325
@@ -43550,8 +43548,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 666662218}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.28097174, y: -0, z: -0, w: 0.959716}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: 0.8976561, y: -0, z: -0, w: -0.4406968}
+  m_LocalPosition: {x: 0, y: 0, z: -0.00000082856656}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -43561,7 +43559,7 @@ Transform:
   - {fileID: 187514143}
   - {fileID: 1252456177}
   m_Father: {fileID: 9026575548846156353}
-  m_LocalEulerAnglesHint: {x: 32.636, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 232.297, y: 0, z: 0}
 --- !u!43 &669248948
 Mesh:
   m_ObjectHideFlags: 0
@@ -56263,6 +56261,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: be27fb17b5049214cad7212622aa81f8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  verticalOffset: 0.3
 --- !u!23 &891010229
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -89534,6 +89533,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!114 &1322403408
@@ -109598,6 +109600,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!54 &1615896312
@@ -121993,6 +121998,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!114 &1848557769
@@ -132089,6 +132097,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!114 &1981313633
@@ -144014,6 +144025,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!23 &1218278969454685046
@@ -146990,6 +147004,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!114 &2771086885260407381
@@ -154444,6 +154461,9 @@ MonoBehaviour:
   _IsGrabbed:
     _value: 0
   _GrabbedByRoleValue: 0
+  _GrabbedHandValue: 0
+  _UsesAvatarHandAttachment:
+    _value: 0
   _TargetPosition: {x: 0, y: 0, z: 0}
   _TargetRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!1 &5302189816590066205

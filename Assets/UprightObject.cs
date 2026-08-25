@@ -2,14 +2,17 @@ using UnityEngine;
 
 public class UprightObject : MonoBehaviour
 {
+    [SerializeField] private float verticalOffset = 0.3f;
+
     private void LateUpdate()
     {
-        Vector3 forward = transform.parent.forward;
-        forward.y = 0f;
+        if (transform.parent == null)
+            return;
 
-        if (forward.sqrMagnitude > 0.001f)
-        {
-            transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-        }
+        // Keep the body directly below the head
+        transform.position = transform.parent.position + Vector3.down * verticalOffset;
+
+        // Keep the body upright
+        transform.rotation = Quaternion.identity;
     }
 }
