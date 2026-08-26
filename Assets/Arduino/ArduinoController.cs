@@ -42,8 +42,56 @@ public class ArduinoController : MonoBehaviour
         {
             ArduinoButtonPressed();
         }
+
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            DebugSpawnItem();
+            Debug.Log("DEBUG: Spawned Item_Into_Virtual.");
+        }
     }
 
+    /// <summary>
+    /// //////////////////////////////////////////////////////////////////////
+    /// </summary>
+    private void DebugSpawnItem()
+    {
+        if (itemIntoVirtualPrefab == null)
+        {
+            Debug.LogError(
+                "Item Into Virtual Prefab has not been assigned."
+            );
+            return;
+        }
+
+        Vector3 spawnPosition = transform.position;
+        Quaternion spawnRotation = transform.rotation;
+
+        if (spawnPoint != null)
+        {
+            spawnPosition = spawnPoint.position;
+            spawnRotation = spawnPoint.rotation;
+        }
+
+        GameObject debugItem = Instantiate(
+            itemIntoVirtualPrefab,
+            spawnPosition,
+            spawnRotation
+        );
+
+        Rigidbody rb = debugItem.GetComponent<Rigidbody>();
+
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.WakeUp();
+        }
+
+        Debug.Log("DEBUG Item_Into_Virtual spawned.");
+    }
+    /// <summary>
+    /// //////////////////////////////////////////////////////////////////////////////////
+    /// </summary>
 
     public void ArduinoButtonPressed()
     {
