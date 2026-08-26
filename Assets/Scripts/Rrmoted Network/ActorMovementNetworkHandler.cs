@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Meta.XR.Movement.Networking;
 using Meta.XR.Movement.Networking.Local;
 using Meta.XR.Movement.Retargeting;
+using Oculus.Interaction.Input;
 #if FUSION2
 using Meta.XR.Movement.Networking.Fusion;
 #endif
@@ -87,10 +88,43 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private int _receiveBufferSize = 3;
 
     [Header("Stream Safety")]
-    [Tooltip("Forces remote avatars to apply only newly deserialized poses. " +
-             "This bypasses the Movement SDK interpolation buffer while diagnosing stalls.")]
+    [Tooltip("Bypasses the Movement SDK snapshot interpolator for remote avatars " +
+             "and uses frame-rate-independent managed pose smoothing instead. " +
+             "This avoids occasional armature flips caused by interpolating " +
+             "compressed quaternion snapshots.")]
     [SerializeField]
     private bool _disableRemoteInterpolation = true;
+
+    [Tooltip("Response speed of managed remote pose smoothing when Movement SDK " +
+             "interpolation is disabled. Higher values follow the sender more " +
+             "closely; lower values are smoother but add latency.")]
+    [SerializeField]
+    [Min(1f)]
+    private float _remotePoseSmoothingSpeed = 24f;
+
+    [Tooltip("Sends self-contained snapshots while managed remote smoothing is " +
+             "active. Raw delta decoder output must not be applied directly as " +
+             "a complete skeleton because missing scale/joint values can collapse " +
+             "or flip an armature.")]
+    [SerializeField]
+    private bool _forceFullSnapshotsForManagedSmoothing = true;
+
+    [Tooltip("Rejects a received pose that collapses a joint scale or rotates a " +
+             "joint an implausible amount in one packet.")]
+    [SerializeField]
+    private bool _rejectRemotePoseDiscontinuities = true;
+
+    [SerializeField]
+    [Range(90f, 180f)]
+    private float _maximumRemoteJointRotationStepDegrees = 135f;
+
+    [SerializeField]
+    [Min(0.0001f)]
+    private float _minimumRemoteJointScale = 0.001f;
+
+    [SerializeField]
+    [Min(1f)]
+    private float _maximumRemoteJointScale = 10f;
 
     [Tooltip("Stops applying pose data after the movement stream becomes stale.")]
     [SerializeField]
@@ -125,6 +159,8 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private NativeArray<NativeTransform> _bodyPose;
     private NativeArray<float> _facePose;
+    private NativeArray<NativeTransform> _smoothedBodyPose;
+    private NativeArray<float> _smoothedFacePose;
     private NativeArray<byte> _serializedData;
 
     private float _elapsedSendTime;
@@ -173,6 +209,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     private double _latestSnapshotTimestamp;
     private bool _hasReceivedPacket;
     private bool _packetStreamIsStale;
+    private bool _hasSmoothedRemotePose;
 
     private bool _hasObservedLocalTrackingState;
     private bool _lastLocalTrackingState;
@@ -216,6 +253,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
         _receiveBufferSize = Mathf.Max(2, _receiveBufferSize);
+        _remotePoseSmoothingSpeed = Mathf.Max(
+            1f,
+            _remotePoseSmoothingSpeed
+        );
+        ClampRemotePoseSafetySettings();
         _stalePacketTimeoutSeconds = Mathf.Max(
             0.1f,
             _stalePacketTimeoutSeconds
@@ -326,6 +368,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
     {
         _maximumSendRateHz = Mathf.Max(1f, _maximumSendRateHz);
         _receiveBufferSize = Mathf.Max(2, _receiveBufferSize);
+        _remotePoseSmoothingSpeed = Mathf.Max(
+            1f,
+            _remotePoseSmoothingSpeed
+        );
+        ClampRemotePoseSafetySettings();
         _stalePacketTimeoutSeconds = Mathf.Max(
             0.1f,
             _stalePacketTimeoutSeconds
@@ -341,6 +388,27 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         {
             _networkCharacterRetargeter.UpdateSerializationSettings();
         }
+    }
+
+    private void ClampRemotePoseSafetySettings()
+    {
+        _maximumRemoteJointRotationStepDegrees = Mathf.Clamp(
+            _maximumRemoteJointRotationStepDegrees,
+            90f,
+            180f
+        );
+        _minimumRemoteJointScale = Mathf.Max(
+            0.0001f,
+            _minimumRemoteJointScale
+        );
+        _maximumRemoteJointScale = Mathf.Max(
+            1f,
+            _maximumRemoteJointScale
+        );
+        _minimumRemoteJointScale = Mathf.Min(
+            _minimumRemoteJointScale,
+            _maximumRemoteJointScale
+        );
     }
 
     public void Setup(bool instantiateCharacter = true)
@@ -781,11 +849,27 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 );
         }
 
+        AvatarHandAnchorProvider handAnchorProvider =
+            _character.GetComponent<AvatarHandAnchorProvider>();
+
+        if (handAnchorProvider == null)
+        {
+            handAnchorProvider =
+                _character.AddComponent<AvatarHandAnchorProvider>();
+        }
+
+        handAnchorProvider.ResolveReferences();
+
         if (_networkCharacterRetargeter == null)
         {
             LogSetupFailure(
                 "NetworkCharacterRetargeter was not found in the character."
             );
+            return false;
+        }
+
+        if (!TryConfigureIsdkSourceProcessor())
+        {
             return false;
         }
 
@@ -887,12 +971,102 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             $"{postProcessingActive && _validateReceivedPose}, " +
             $"PoseApplied={!IsRemoteReceiveDiscardMode && _applyData}, " +
             $"UseInterpolation={_networkCharacterRetargeter.UseInterpolation}, " +
+            $"ManagedSmoothingSpeed=" +
+            $"{(!_networkCharacterRetargeter.UseInterpolation ? _remotePoseSmoothingSpeed : 0f):F1}, " +
+            $"ManagedFullSnapshots=" +
+            $"{(!_networkCharacterRetargeter.UseInterpolation && _forceFullSnapshotsForManagedSmoothing)}, " +
+            $"RejectPoseDiscontinuities=" +
+            $"{_rejectRemotePoseDiscontinuities}, " +
             $"NativeSnapshotCapacity=" +
             $"{(nativeSerializationSettingsAvailable ? nativeSerializationSettings.NumberOfSnapshots : -1)}, " +
             $"OutputGuardElements=" +
             $"{(IsRemoteContinuousDeserializeMode ? IsolationOutputGuardElementCount : 0)}, " +
             $"StaleTimeout={_stalePacketTimeoutSeconds:F2}s, " +
             $"ValidatePoseConfigured={_validateReceivedPose}.",
+            this
+        );
+
+        return true;
+    }
+
+    private bool TryConfigureIsdkSourceProcessor()
+    {
+        ISDKSkeletalProcessor isdkProcessor =
+            _networkCharacterRetargeter
+                .GetSourceProcessor<ISDKSkeletalProcessor>();
+
+        if (isdkProcessor == null)
+        {
+            return true;
+        }
+
+        if (!_characterBehaviour.HasInputAuthority)
+        {
+            LogSetupFailure(
+                "The remote character prefab contains an ISDK source " +
+                "processor. Remove its Source Processor Container so the " +
+                "remote avatar is driven only by received network poses."
+            );
+            return false;
+        }
+
+        OVRCameraRig cameraRig = OVRManager.instance != null
+            ? OVRManager.instance.GetComponentInChildren<OVRCameraRig>(true)
+            : null;
+
+        cameraRig ??=
+            UnityEngine.Object.FindFirstObjectByType<OVRCameraRig>(
+                FindObjectsInactive.Include
+            );
+
+        if (cameraRig == null)
+        {
+            LogSetupFailure(
+                "The local actor OVRCameraRig was not found while binding " +
+                "the Movement ISDK source processor."
+            );
+            return false;
+        }
+
+        SyntheticHand leftHand = null;
+        SyntheticHand rightHand = null;
+
+        SyntheticHand[] syntheticHands =
+            cameraRig.GetComponentsInChildren<SyntheticHand>(true);
+
+        foreach (SyntheticHand syntheticHand in syntheticHands)
+        {
+            switch (syntheticHand.Handedness)
+            {
+                case Handedness.Left:
+                    leftHand = syntheticHand;
+                    break;
+                case Handedness.Right:
+                    rightHand = syntheticHand;
+                    break;
+            }
+        }
+
+        if (leftHand == null || rightHand == null)
+        {
+            LogSetupFailure(
+                "Both SyntheticHand components must be children of the " +
+                "local actor OVRCameraRig before the network avatar can use " +
+                "ISDK object hand poses."
+            );
+            return false;
+        }
+
+        // CharacterRetargeter.Setup initializes and caches these IHand
+        // references. They must be assigned before Setup is called below.
+        isdkProcessor.CameraRig = cameraRig;
+        isdkProcessor.LeftHand = leftHand.gameObject;
+        isdkProcessor.RightHand = rightHand.gameObject;
+
+        Debug.Log(
+            "ActorMovementNetworkHandler: Bound Movement ISDK sources. " +
+            $"CameraRig={cameraRig.name}, LeftHand={leftHand.name}, " +
+            $"RightHand={rightHand.name}.",
             this
         );
 
@@ -1060,6 +1234,15 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         foreach (Animator animator in animators)
         {
             animator.applyRootMotion = false;
+
+            // The network retargeter writes every remote bone directly. Even
+            // with no controller assigned, an enabled humanoid Animator can
+            // rebind or normalize the hierarchy after the network pose write.
+            // Keep exactly one remote armature writer.
+            if (!isLocalTrackingSource)
+            {
+                animator.enabled = false;
+            }
         }
     }
 
@@ -1145,6 +1328,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 : 0);
 
         EnsureArraySize(ref _bodyPose, bodyBufferLength);
+        EnsureArraySize(ref _smoothedBodyPose, bodyBufferLength);
 
         _configuredFaceShapeCount = Mathf.Max(0, faceShapeCount);
 
@@ -1160,11 +1344,16 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 ? IsolationOutputGuardElementCount
                 : 0);
         EnsureArraySize(ref _facePose, faceBufferLength);
+        EnsureArraySize(ref _smoothedFacePose, faceBufferLength);
 
         bool ready = _bodyPose.IsCreated &&
                      _bodyPose.Length == bodyBufferLength &&
+                     _smoothedBodyPose.IsCreated &&
+                     _smoothedBodyPose.Length == bodyBufferLength &&
                      _facePose.IsCreated &&
-                     _facePose.Length == faceBufferLength;
+                     _facePose.Length == faceBufferLength &&
+                     _smoothedFacePose.IsCreated &&
+                     _smoothedFacePose.Length == faceBufferLength;
 
         if (!ready)
         {
@@ -1691,29 +1880,25 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
-        bool receivedNewPose = false;
-
         if (_receiveCount > 0)
         {
-            receivedNewPose = DeserializeNextPacket();
+            DeserializeNextPacket();
         }
 
-        if (IsPacketStreamStale())
+        bool packetStreamIsStale = IsPacketStreamStale();
+
+        if (!_applyData)
         {
             return;
         }
 
-        if (!_applyData || !_dataIsValid)
+        if (!_networkCharacterRetargeter.UseInterpolation)
         {
+            ApplyManagedRemotePose(!packetStreamIsStale && _dataIsValid);
             return;
         }
 
-        // Without interpolation, _bodyPose/_facePose already contain the
-        // decoded snapshot. Reapplying that same snapshot on every rendered
-        // frame creates unnecessary Transform/SkinnedMesh work and continues
-        // forever after the sender stops. Apply direct poses exactly once.
-        if (!_networkCharacterRetargeter.UseInterpolation &&
-            !receivedNewPose)
+        if (packetStreamIsStale || !_dataIsValid)
         {
             return;
         }
@@ -1801,6 +1986,10 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                 _dataIsValid = false;
                 return false;
             }
+
+            bool snapManagedPose =
+                !_hasSmoothedRemotePose || _packetStreamIsStale;
+            CaptureManagedRemotePose(snapManagedPose);
 
             _dataIsValid = true;
             _latestSnapshotTimestamp = snapshotTimestamp;
@@ -1898,6 +2087,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return LogInvalidPose("snapshot timestamp is not finite");
         }
 
+        int configuredBodyCount = Mathf.Min(
+            _configuredJointCount,
+            _bodyPose.Length
+        );
+
         for (int i = 0; i < _bodyPose.Length; i++)
         {
             NativeTransform pose = _bodyPose[i];
@@ -1933,6 +2127,44 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
                     $"joint {i} exceeds the transform safety range"
                 );
             }
+
+            if (i >= configuredBodyCount)
+            {
+                continue;
+            }
+
+            if (pose.Scale.x < _minimumRemoteJointScale ||
+                pose.Scale.y < _minimumRemoteJointScale ||
+                pose.Scale.z < _minimumRemoteJointScale ||
+                pose.Scale.x > _maximumRemoteJointScale ||
+                pose.Scale.y > _maximumRemoteJointScale ||
+                pose.Scale.z > _maximumRemoteJointScale)
+            {
+                return LogInvalidPose(
+                    $"joint {i} has a collapsing or mirrored scale " +
+                    $"({pose.Scale})"
+                );
+            }
+
+            if (_rejectRemotePoseDiscontinuities &&
+                _hasSmoothedRemotePose &&
+                !_packetStreamIsStale &&
+                _smoothedBodyPose.IsCreated)
+            {
+                float rotationStep = Quaternion.Angle(
+                    _smoothedBodyPose[i].Orientation,
+                    pose.Orientation
+                );
+
+                if (rotationStep >
+                    _maximumRemoteJointRotationStepDegrees)
+                {
+                    return LogInvalidPose(
+                        $"joint {i} rotated {rotationStep:F1} degrees in " +
+                        "one received snapshot"
+                    );
+                }
+            }
         }
 
         for (int i = 0; i < _facePose.Length; i++)
@@ -1954,6 +2186,14 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private bool LogInvalidPose(string reason)
     {
+        if (_characterBehaviour != null &&
+            !_characterBehaviour.HasInputAuthority)
+        {
+            // Abandon any delta baseline associated with the rejected pose.
+            // The sender will answer with a complete recovery snapshot.
+            SendAck(-1);
+        }
+
         if (!_loggedInvalidPose)
         {
             Debug.LogError(
@@ -1967,7 +2207,124 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         return false;
     }
 
+    private void CaptureManagedRemotePose(bool snapSmoothedPose)
+    {
+        // Compressed quaternion snapshots can alternate between q and -q.
+        // Both represent the same rotation, but normalizing here and using
+        // Unity's shortest-path Slerp avoids the long-arc flip seen in the
+        // Movement SDK interpolation buffer.
+        for (int i = 0; i < _bodyPose.Length; i++)
+        {
+            NativeTransform pose = _bodyPose[i];
+            pose.Orientation = pose.Orientation.normalized;
+
+            if (_hasSmoothedRemotePose &&
+                _smoothedBodyPose.IsCreated &&
+                Quaternion.Dot(
+                    _smoothedBodyPose[i].Orientation,
+                    pose.Orientation
+                ) < 0f)
+            {
+                // q and -q represent the same rotation. Keeping every target
+                // in the same quaternion hemisphere makes interpolation
+                // deterministic across compressed snapshots.
+                pose.Orientation = new Quaternion(
+                    -pose.Orientation.x,
+                    -pose.Orientation.y,
+                    -pose.Orientation.z,
+                    -pose.Orientation.w
+                );
+            }
+
+            _bodyPose[i] = pose;
+
+            if (snapSmoothedPose)
+            {
+                _smoothedBodyPose[i] = pose;
+            }
+        }
+
+        if (snapSmoothedPose)
+        {
+            for (int i = 0; i < _facePose.Length; i++)
+            {
+                _smoothedFacePose[i] = _facePose[i];
+            }
+        }
+
+        _hasSmoothedRemotePose = true;
+    }
+
+    private void ApplyManagedRemotePose(bool advanceTowardLatestPose)
+    {
+        if (!_hasSmoothedRemotePose ||
+            !_smoothedBodyPose.IsCreated ||
+            !_smoothedFacePose.IsCreated)
+        {
+            return;
+        }
+
+        if (advanceTowardLatestPose)
+        {
+            float blend = 1f - Mathf.Exp(
+                -_remotePoseSmoothingSpeed * Mathf.Max(0f, Time.deltaTime)
+            );
+
+            for (int i = 0; i < _bodyPose.Length; i++)
+            {
+                NativeTransform current = _smoothedBodyPose[i];
+                NativeTransform target = _bodyPose[i];
+
+                current.Position = Vector3.Lerp(
+                    current.Position,
+                    target.Position,
+                    blend
+                );
+                current.Orientation = Quaternion.Slerp(
+                    current.Orientation,
+                    target.Orientation,
+                    blend
+                ).normalized;
+                current.Scale = Vector3.Lerp(
+                    current.Scale,
+                    target.Scale,
+                    blend
+                );
+                _smoothedBodyPose[i] = current;
+            }
+
+            for (int i = 0; i < _facePose.Length; i++)
+            {
+                _smoothedFacePose[i] = Mathf.Lerp(
+                    _smoothedFacePose[i],
+                    _facePose[i],
+                    blend
+                );
+            }
+        }
+
+        // Apply on every rendered frame, matching Meta's handler contract.
+        // Several avatar systems run after Update; applying only on packet
+        // frames allowed them to reset the armature between packets, which
+        // presented as the remote mesh flashing in and out.
+        if (!ApplyBodyPoseSafely(_smoothedBodyPose))
+        {
+            return;
+        }
+
+        if (_configuredFaceShapeCount > 0)
+        {
+            ApplyFacePoseSafely(_smoothedFacePose);
+        }
+    }
+
     private bool ApplyBodyPoseSafely()
+    {
+        return ApplyBodyPoseSafely(_bodyPose);
+    }
+
+    private bool ApplyBodyPoseSafely(
+        NativeArray<NativeTransform> bodyPose)
     {
         int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
             "MOVEMENT_APPLY_BODY"
@@ -1976,11 +2333,11 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         try
         {
             _networkCharacterRetargeter.ApplyBodyPose(
-                _bodyPose,
+                bodyPose,
                 Meta.XR.Movement.Retargeting.JointType.NoWorldSpace
             );
 
-            _networkCharacterRetargeter.SetDebugPose(_bodyPose);
+            _networkCharacterRetargeter.SetDebugPose(bodyPose);
             return true;
         }
         catch (Exception exception)
@@ -1996,13 +2353,18 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
 
     private bool ApplyFacePoseSafely()
     {
+        return ApplyFacePoseSafely(_facePose);
+    }
+
+    private bool ApplyFacePoseSafely(NativeArray<float> facePose)
+    {
         int stageToken = RuntimeDiagnosticsFileLogger.BeginCriticalStage(
             "MOVEMENT_APPLY_FACE"
         );
 
         try
         {
-            _networkCharacterRetargeter.ApplyFacePose(_facePose);
+            _networkCharacterRetargeter.ApplyFacePose(facePose);
             return true;
         }
         catch (Exception exception)
@@ -2221,7 +2583,12 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
             return;
         }
 
+        bool managedSmoothingNeedsCompletePose =
+            _disableRemoteInterpolation &&
+            _forceFullSnapshotsForManagedSmoothing;
+
         if (_forceFullSnapshot ||
+            managedSmoothingNeedsCompletePose ||
             ShouldSyncData ||
             !_networkCharacterRetargeter.UseDeltaCompression)
         {
@@ -2419,6 +2786,7 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         _isolatedDeserializeInvocationCount = 0;
         _hasReceivedPacket = false;
         _packetStreamIsStale = false;
+        _hasSmoothedRemotePose = false;
         _lastPacketArrivalRealtime = 0f;
         _latestSnapshotTimestamp = 0d;
         _hasObservedLocalTrackingState = false;
@@ -2516,6 +2884,22 @@ public sealed class ActorMovementNetworkHandler : MonoBehaviour, INetworkCharact
         {
             _facePose.Dispose();
         }
+
+        if (_smoothedBodyPose.IsCreated)
+        {
+            _smoothedBodyPose.Dispose();
+        }
+
+        if (_smoothedFacePose.IsCreated)
+        {
+            _smoothedFacePose.Dispose();
+        }
+
+        _bodyPose = default;
+        _facePose = default;
+        _smoothedBodyPose = default;
+        _smoothedFacePose = default;
+        _hasSmoothedRemotePose = false;
     }
 
     private void LogSetupFailure(string message)

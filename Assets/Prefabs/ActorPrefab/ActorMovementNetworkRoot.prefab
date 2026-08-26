@@ -112,7 +112,13 @@ MonoBehaviour:
   _deserializeQueuedFullSnapshotsWithoutAck: 0
   _maximumSendRateHz: 32
   _receiveBufferSize: 3
-  _disableRemoteInterpolation: 0
+  _disableRemoteInterpolation: 1
+  _remotePoseSmoothingSpeed: 24
+  _forceFullSnapshotsForManagedSmoothing: 1
+  _rejectRemotePoseDiscontinuities: 1
+  _maximumRemoteJointRotationStepDegrees: 135
+  _minimumRemoteJointScale: 0.001
+  _maximumRemoteJointScale: 10
   _enableStalePacketProtection: 1
   _stalePacketTimeoutSeconds: 0.5
   _validateReceivedPose: 1

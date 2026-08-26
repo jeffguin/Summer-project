@@ -5,78 +5,290 @@ using UnityEngine;
 public class PortalCameraController : MonoBehaviour
 {
     [Header("Physical Setup")]
-    public Transform screen;   // The PhysicalScreen Quad
-    public Transform eye;      // The Tracked Eye / Head
+    public Transform screen;
+    public Transform eye;
+
+    [Header("Adaptive Projection")]
+    public float idealMinDistance = 0.6f;
+    public float idealMaxDistance = 1.5f;
+
+    public float closeLimitDistance = 0.3f;
+    public float farLimitDistance = 3.0f;
+
+    public float maximumEffectiveCloseDistance = 0.6f;
+    public float minimumEffectiveFarDistance = 1.5f;
+
+    [Header("Cadre")]
+    [Tooltip("Cadre used as the portal boundary.")]
+    public Transform cadre;
+
+    [Tooltip("Enable the cadre when the audience exceeds the far limit.")]
+    public bool enableCadreAtFarLimit = true;
+
+    public bool IsBeyondFarLimit { get; private set; }
 
     private Camera cam;
 
     void Awake()
     {
         cam = GetComponent<Camera>();
-        // Reset matrices to ensure always starting from a clean slate
+
         cam.ResetProjectionMatrix();
         cam.ResetWorldToCameraMatrix();
     }
 
     void LateUpdate()
     {
-        if (screen == null || eye == null) return;
+        if (screen == null || eye == null)
+            return;
 
         UpdateCamera();
     }
 
     void UpdateCamera()
     {
-        // --- 1. SCREEN CORNERS IN WORLD SPACE ---
-        // Get the four corners of the 1x1 Unity Quad
-        Vector3 bl = screen.TransformPoint(new Vector3(-0.5f, -0.5f, 0f));
-        Vector3 br = screen.TransformPoint(new Vector3( 0.5f, -0.5f, 0f));
-        Vector3 tl = screen.TransformPoint(new Vector3(-0.5f,  0.5f, 0f));
+        // ---------------------------------------------
+        // SCREEN CORNERS
+        // ---------------------------------------------
 
-        // --- 2. SCREEN BASIS VECTORS ---
-        Vector3 vr = (br - bl).normalized; // Right direction of screen
-        Vector3 vu = (tl - bl).normalized; // Up direction of screen
-        Vector3 vn = Vector3.Cross(vr, vu).normalized; // Normal (pointing away)
+        Vector3 bl =
+            screen.TransformPoint(
+                new Vector3(-0.5f, -0.5f, 0f)
+            );
+
+        Vector3 br =
+            screen.TransformPoint(
+                new Vector3(0.5f, -0.5f, 0f)
+            );
+
+        Vector3 tl =
+            screen.TransformPoint(
+                new Vector3(-0.5f, 0.5f, 0f)
+            );
+
+        // ---------------------------------------------
+        // SCREEN BASIS
+        // ---------------------------------------------
+
+        Vector3 vr =
+            (br - bl).normalized;
+
+        Vector3 vu =
+            (tl - bl).normalized;
+
+        Vector3 vn =
+            Vector3.Cross(vr, vu).normalized;
 
         Vector3 eyePos = eye.position;
 
-        // Ensure the normal vector points TOWARD the eye for the math
         if (Vector3.Dot(vn, eyePos - bl) < 0f)
             vn = -vn;
 
-        // --- 3. DISTANCE AND CLIP PLANES ---
+        // ---------------------------------------------
+        // ACTUAL DISTANCE
+        // ---------------------------------------------
+
+        float actualDistance =
+            Vector3.Dot(
+                eyePos - bl,
+                vn
+            );
+
+        actualDistance =
+            Mathf.Max(
+                actualDistance,
+                0.01f
+            );
+
+        IsBeyondFarLimit =
+            actualDistance > farLimitDistance;
+
+        // ---------------------------------------------
+        // EFFECTIVE DISTANCE
+        // ---------------------------------------------
+
+        float effectiveDistance =
+            CalculateEffectiveDistance(
+                actualDistance
+            );
+
+        // ---------------------------------------------
+        // CLIP PLANES
+        // ---------------------------------------------
+
         float near = cam.nearClipPlane;
         float far = cam.farClipPlane;
 
-        // Perpendicular distance from eye to the screen plane
-        float d = Vector3.Dot(eyePos - bl, vn);
-        if (d < 0.01f) d = 0.01f;
+        // ---------------------------------------------
+        // OFF-AXIS FRUSTUM
+        //
+        // This remains the wide adaptive projection.
+        // The cadre does NOT modify these values.
+        // ---------------------------------------------
 
-        // --- 4. OFF-AXIS FRUSTUM BOUNDS ---
-        // Project the vectors from eye to corners onto the screen axes
-        float left   = Vector3.Dot(vr, bl - eyePos) * near / d;
-        float right  = Vector3.Dot(vr, br - eyePos) * near / d;
-        float bottom = Vector3.Dot(vu, bl - eyePos) * near / d;
-        float top    = Vector3.Dot(vu, tl - eyePos) * near / d;
+        float left =
+            Vector3.Dot(
+                vr,
+                bl - eyePos
+            ) * near / effectiveDistance;
 
-        // Apply the skewed projection matrix
-        cam.projectionMatrix = Matrix4x4.Frustum(left, right, bottom, top, near, far);
+        float right =
+            Vector3.Dot(
+                vr,
+                br - eyePos
+            ) * near / effectiveDistance;
 
-        // --- 5. OBLIQUE NEAR CLIP PLANE ---
-        // slices objects perfectly at the screen surface
-        Vector3 cameraSpaceNormal = cam.worldToCameraMatrix.MultiplyVector(vn);
-        Vector3 cameraSpacePoint = cam.worldToCameraMatrix.MultiplyPoint(bl);
-        float distanceToPlane = -Vector3.Dot(cameraSpaceNormal, cameraSpacePoint);
-        
-        // Create the plane vector (x, y, z, w)
-        Vector4 clipPlane = new Vector4(cameraSpaceNormal.x, cameraSpaceNormal.y, cameraSpaceNormal.z, distanceToPlane);
-        
-        // Make the projection matrix respect the physical screen as the clipping point
-        cam.projectionMatrix = cam.CalculateObliqueMatrix(clipPlane);
+        float bottom =
+            Vector3.Dot(
+                vu,
+                bl - eyePos
+            ) * near / effectiveDistance;
 
-        // --- 6. CAMERA POSITION & ROTATION ---
-        cam.transform.position = eyePos;
-        // Look "into" the screen (-vn) while keeping screen-up (vu)
-        cam.transform.rotation = Quaternion.LookRotation(-vn, vu); 
+        float top =
+            Vector3.Dot(
+                vu,
+                tl - eyePos
+            ) * near / effectiveDistance;
+
+        cam.projectionMatrix =
+            Matrix4x4.Frustum(
+                left,
+                right,
+                bottom,
+                top,
+                near,
+                far
+            );
+
+        // ---------------------------------------------
+        // OBLIQUE CLIPPING
+        //
+        // The physical screen remains the portal plane.
+        // ---------------------------------------------
+
+        Vector3 cameraSpaceNormal =
+            cam.worldToCameraMatrix
+                .MultiplyVector(vn);
+
+        Vector3 cameraSpacePoint =
+            cam.worldToCameraMatrix
+                .MultiplyPoint(bl);
+
+        float distanceToPlane =
+            -Vector3.Dot(
+                cameraSpaceNormal,
+                cameraSpacePoint
+            );
+
+        Vector4 clipPlane =
+            new Vector4(
+                cameraSpaceNormal.x,
+                cameraSpaceNormal.y,
+                cameraSpaceNormal.z,
+                distanceToPlane
+            );
+
+        cam.projectionMatrix =
+            cam.CalculateObliqueMatrix(
+                clipPlane
+            );
+
+        // ---------------------------------------------
+        // CAMERA TRANSFORM
+        // ---------------------------------------------
+
+        cam.transform.position =
+            eyePos;
+
+        cam.transform.rotation =
+            Quaternion.LookRotation(
+                -vn,
+                vu
+            );
+
+        // ---------------------------------------------
+        // CADRE STATE
+        // ---------------------------------------------
+
+        if (cadre != null)
+        {
+            bool shouldShowCadre =
+                enableCadreAtFarLimit &&
+                IsBeyondFarLimit;
+
+            cadre.gameObject.SetActive(
+                shouldShowCadre
+            );
+        }
+    }
+
+    float CalculateEffectiveDistance(
+        float actualDistance
+    )
+    {
+        // ---------------------------------------------
+        // IDEAL ZONE
+        // ---------------------------------------------
+
+        if (actualDistance >= idealMinDistance &&
+            actualDistance <= idealMaxDistance)
+        {
+            return actualDistance;
+        }
+
+        // ---------------------------------------------
+        // TOO CLOSE
+        // ---------------------------------------------
+
+        if (actualDistance < idealMinDistance)
+        {
+            float t =
+                Mathf.InverseLerp(
+                    closeLimitDistance,
+                    idealMinDistance,
+                    actualDistance
+                );
+
+            t = Mathf.Clamp01(t);
+
+            t =
+                Mathf.SmoothStep(
+                    0f,
+                    1f,
+                    t
+                );
+
+            return Mathf.Lerp(
+                maximumEffectiveCloseDistance,
+                idealMinDistance,
+                t
+            );
+        }
+
+        // ---------------------------------------------
+        // TOO FAR
+        // ---------------------------------------------
+
+        float farT =
+            Mathf.InverseLerp(
+                idealMaxDistance,
+                farLimitDistance,
+                actualDistance
+            );
+
+        farT = Mathf.Clamp01(farT);
+
+        farT =
+            Mathf.SmoothStep(
+                0f,
+                1f,
+                farT
+            );
+
+        return Mathf.Lerp(
+            idealMaxDistance,
+            minimumEffectiveFarDistance,
+            farT
+        );
     }
 }

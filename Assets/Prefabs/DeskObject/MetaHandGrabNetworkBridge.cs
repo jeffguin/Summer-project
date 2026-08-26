@@ -1,6 +1,8 @@
 ﻿using Fusion;
 using UnityEngine;
 using Oculus.Interaction;
+using Oculus.Interaction.HandGrab;
+using Oculus.Interaction.Input;
 
 [RequireComponent(typeof(Grabbable))]
 [RequireComponent(typeof(NetworkPhysicalGrabbable))]
@@ -41,6 +43,8 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
 
     private Pose latestPointerPose;
     private bool hasLatestPointerPose = false;
+    private NetworkPhysicalGrabbable.GrabHand activeGrabHand =
+        NetworkPhysicalGrabbable.GrabHand.None;
 
     private float nextTargetSendTime;
 
@@ -92,6 +96,7 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
         hasRequestedGrab = false;
         activePointerId = -1;
         hasLatestPointerPose = false;
+        activeGrabHand = NetworkPhysicalGrabbable.GrabHand.None;
     }
 
     private void Update()
@@ -187,6 +192,7 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
         isSelected = true;
         hasRequestedGrab = true;
         activePointerId = pointerEvent.Identifier;
+        activeGrabHand = ResolveGrabHand(pointerEvent);
 
         latestPointerPose = pointerEvent.Pose;
         hasLatestPointerPose = true;
@@ -217,12 +223,14 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
 
         DebugMessage(
             $"Request grab. Object={gameObject.name}, " +
-            $"Player={runner.LocalPlayer}, Role={grabRole}, PointerId={activePointerId}"
+            $"Player={runner.LocalPlayer}, Role={grabRole}, " +
+            $"Hand={activeGrabHand}, PointerId={activePointerId}"
         );
 
         networkGrabbable.RPC_RequestGrab(
             runner.LocalPlayer,
-            (int)grabRole
+            (int)grabRole,
+            (int)activeGrabHand
         );
 
         SendTargetFromLatestPointerPose();
@@ -339,6 +347,93 @@ public class MetaHandGrabNetworkBridge : MonoBehaviour
         hasRequestedGrab = false;
         activePointerId = -1;
         hasLatestPointerPose = false;
+        activeGrabHand = NetworkPhysicalGrabbable.GrabHand.None;
+    }
+
+    private NetworkPhysicalGrabbable.GrabHand ResolveGrabHand(
+        PointerEvent pointerEvent)
+    {
+        HandGrabInteractor[] nearHandInteractors =
+            FindObjectsByType<HandGrabInteractor>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None
+            );
+
+        foreach (HandGrabInteractor interactor in nearHandInteractors)
+        {
+            if (interactor.Identifier == pointerEvent.Identifier &&
+                interactor.Hand != null)
+            {
+                return FromIsdkHandedness(interactor.Hand.Handedness);
+            }
+        }
+
+        DistanceHandGrabInteractor[] distanceHandInteractors =
+            FindObjectsByType<DistanceHandGrabInteractor>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None
+            );
+
+        foreach (DistanceHandGrabInteractor interactor in distanceHandInteractors)
+        {
+            if (interactor.Identifier == pointerEvent.Identifier &&
+                interactor.Hand != null)
+            {
+                return FromIsdkHandedness(interactor.Hand.Handedness);
+            }
+        }
+
+        // PointerEvent.Data does not guarantee handedness for controller and
+        // custom interactors. For actor grabs, choose the closest spawned
+        // avatar wrist to the solved grab pose as a runtime fallback.
+        if (runner != null &&
+            grabRole == NetworkPhysicalGrabbable.GrabRole.Actor)
+        {
+            bool hasLeft = AvatarHandAnchorProvider.TryGetAnchor(
+                runner.LocalPlayer,
+                NetworkPhysicalGrabbable.GrabHand.Left,
+                out Transform leftAnchor
+            );
+            bool hasRight = AvatarHandAnchorProvider.TryGetAnchor(
+                runner.LocalPlayer,
+                NetworkPhysicalGrabbable.GrabHand.Right,
+                out Transform rightAnchor
+            );
+
+            if (hasLeft && hasRight)
+            {
+                float leftDistance =
+                    (leftAnchor.position - pointerEvent.Pose.position)
+                    .sqrMagnitude;
+                float rightDistance =
+                    (rightAnchor.position - pointerEvent.Pose.position)
+                    .sqrMagnitude;
+
+                return leftDistance <= rightDistance
+                    ? NetworkPhysicalGrabbable.GrabHand.Left
+                    : NetworkPhysicalGrabbable.GrabHand.Right;
+            }
+
+            if (hasLeft)
+            {
+                return NetworkPhysicalGrabbable.GrabHand.Left;
+            }
+
+            if (hasRight)
+            {
+                return NetworkPhysicalGrabbable.GrabHand.Right;
+            }
+        }
+
+        return NetworkPhysicalGrabbable.GrabHand.None;
+    }
+
+    private static NetworkPhysicalGrabbable.GrabHand FromIsdkHandedness(
+        Handedness handedness)
+    {
+        return handedness == Handedness.Left
+            ? NetworkPhysicalGrabbable.GrabHand.Left
+            : NetworkPhysicalGrabbable.GrabHand.Right;
     }
 
     private void DebugMessage(string message)
