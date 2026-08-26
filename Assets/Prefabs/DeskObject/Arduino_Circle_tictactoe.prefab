@@ -2948,7 +2948,6 @@ MonoBehaviour:
   _handAligment: 1
   _handGrabPoses:
   - {fileID: 3690979054981189176}
-  - {fileID: 5436343932674348209}
 --- !u!114 &3690979054981189176
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3560,7 +3559,8 @@ MonoBehaviour:
     _unselectMode: 0
   _movementProvider: {fileID: 0}
   _handAligment: 0
-  _handGrabPoses: []
+  _handGrabPoses:
+  - {fileID: 5436343932674348209}
 --- !u!114 &5155875176806819085
 MonoBehaviour:
   m_ObjectHideFlags: 0

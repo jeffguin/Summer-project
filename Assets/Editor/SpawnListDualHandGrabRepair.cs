@@ -5,15 +5,16 @@ using System.IO;
 using System.Text.RegularExpressions;
 using Oculus.Interaction;
 using Oculus.Interaction.HandGrab;
+using Oculus.Interaction.Input;
 using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Keeps every already-grabbable prefab in the Actor BasicSpawner list usable
-/// by either tracked hand. HandGrabPose lists are scale interpolation keys in
-/// Interaction SDK, not a place to combine a left pose and a right pose.
-/// Removing the pose constraint preserves the existing Grabbable/controller/
-/// networking setup while making the hand interactable handedness-neutral.
+/// Validates every already-grabbable prefab in the Actor BasicSpawner list.
+/// HandGrabPose lists are scale interpolation keys and must contain poses for
+/// one handedness only. Supporting both hands requires separate interactables;
+/// recorded poses must never be cleared because they also define the intended
+/// wrist placement and finger pose.
 /// </summary>
 public static class SpawnListDualHandGrabRepair
 {
@@ -42,8 +43,6 @@ public static class SpawnListDualHandGrabRepair
     public static void RepairActorSpawnListDualHandGrab()
     {
         IReadOnlyList<SpawnItem> spawnItems = ReadActorSpawnItems();
-        int repairedPrefabCount = 0;
-        int clearedPoseListCount = 0;
         int validatedGrabbablePrefabCount = 0;
 
         foreach (SpawnItem item in spawnItems)
@@ -78,43 +77,8 @@ public static class SpawnListDualHandGrabRepair
                     );
                 }
 
-                bool changed = false;
-
-                foreach (HandGrabInteractable handInteractable in
-                         handInteractables)
-                {
-                    SerializedObject serializedInteractable =
-                        new SerializedObject(handInteractable);
-                    SerializedProperty handGrabPoses =
-                        serializedInteractable.FindProperty("_handGrabPoses");
-
-                    if (handGrabPoses == null)
-                    {
-                        throw new InvalidOperationException(
-                            "Interaction SDK field '_handGrabPoses' was not " +
-                            $"found on {item.PrefabPath}."
-                        );
-                    }
-
-                    if (handGrabPoses.arraySize == 0)
-                    {
-                        continue;
-                    }
-
-                    handGrabPoses.ClearArray();
-                    serializedInteractable.ApplyModifiedPropertiesWithoutUndo();
-                    clearedPoseListCount++;
-                    changed = true;
-                }
-
                 ValidatePrefab(item, root, requireGrabbable: true);
                 validatedGrabbablePrefabCount++;
-
-                if (changed)
-                {
-                    PrefabUtility.SaveAsPrefabAsset(root, item.PrefabPath);
-                    repairedPrefabCount++;
-                }
             }
             finally
             {
@@ -122,15 +86,11 @@ public static class SpawnListDualHandGrabRepair
             }
         }
 
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-
         Debug.Log(
-            "SpawnListDualHandGrabRepair: completed. " +
+            "SpawnListDualHandGrabRepair: validation completed without " +
+            "modifying recorded hand poses. " +
             $"SpawnItems={spawnItems.Count}, " +
-            $"GrabbablePrefabs={validatedGrabbablePrefabCount}, " +
-            $"ChangedPrefabs={repairedPrefabCount}, " +
-            $"ClearedPoseLists={clearedPoseListCount}."
+            $"GrabbablePrefabs={validatedGrabbablePrefabCount}."
         );
     }
 
@@ -204,7 +164,9 @@ public static class SpawnListDualHandGrabRepair
             );
         }
 
-        int activeDualHandInteractableCount = 0;
+        int activeInteractableCount = 0;
+        bool supportsLeftHand = false;
+        bool supportsRightHand = false;
 
         foreach (HandGrabInteractable handInteractable in handInteractables)
         {
@@ -213,11 +175,11 @@ public static class SpawnListDualHandGrabRepair
             SerializedProperty handGrabPoses =
                 serializedInteractable.FindProperty("_handGrabPoses");
 
-            if (handGrabPoses == null || handGrabPoses.arraySize != 0)
+            if (handGrabPoses == null)
             {
                 throw new InvalidOperationException(
-                    $"Spawn item '{item.Name}' still has a handed or malformed " +
-                    $"HandGrabPose constraint on '{GetHierarchyPath(handInteractable.transform)}'. " +
+                    "Interaction SDK field '_handGrabPoses' was not found on " +
+                    $"'{GetHierarchyPath(handInteractable.transform)}'. " +
                     $"Prefab: {item.PrefabPath}"
                 );
             }
@@ -225,15 +187,76 @@ public static class SpawnListDualHandGrabRepair
             if (handInteractable.enabled &&
                 handInteractable.gameObject.activeInHierarchy)
             {
-                activeDualHandInteractableCount++;
+                activeInteractableCount++;
+
+                Handedness? poseHandedness = null;
+
+                for (int i = 0; i < handGrabPoses.arraySize; i++)
+                {
+                    HandGrabPose pose = handGrabPoses
+                        .GetArrayElementAtIndex(i)
+                        .objectReferenceValue as HandGrabPose;
+
+                    if (pose == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Null HandGrabPose on " +
+                            $"'{GetHierarchyPath(handInteractable.transform)}'. " +
+                            $"Prefab: {item.PrefabPath}"
+                        );
+                    }
+
+                    if (pose.HandPose == null)
+                    {
+                        continue;
+                    }
+
+                    Handedness currentHandedness = pose.HandPose.Handedness;
+
+                    if (poseHandedness.HasValue &&
+                        poseHandedness.Value != currentHandedness)
+                    {
+                        throw new InvalidOperationException(
+                            $"Mixed left/right HandGrabPoses on " +
+                            $"'{GetHierarchyPath(handInteractable.transform)}'. " +
+                            "Use one interactable per handedness. " +
+                            $"Prefab: {item.PrefabPath}"
+                        );
+                    }
+
+                    poseHandedness = currentHandedness;
+                }
+
+                if (!poseHandedness.HasValue)
+                {
+                    supportsLeftHand = true;
+                    supportsRightHand = true;
+                }
+                else if (poseHandedness.Value == Handedness.Left)
+                {
+                    supportsLeftHand = true;
+                }
+                else
+                {
+                    supportsRightHand = true;
+                }
             }
         }
 
-        if (activeDualHandInteractableCount == 0)
+        if (activeInteractableCount == 0)
         {
             throw new InvalidOperationException(
-                $"Spawn item '{item.Name}' has no active, handedness-neutral " +
+                $"Spawn item '{item.Name}' has no active " +
                 $"HandGrabInteractable. Prefab: {item.PrefabPath}"
+            );
+        }
+
+        if (!supportsLeftHand || !supportsRightHand)
+        {
+            throw new InvalidOperationException(
+                $"Spawn item '{item.Name}' does not support both hands. " +
+                $"Left={supportsLeftHand}, Right={supportsRightHand}. " +
+                $"Prefab: {item.PrefabPath}"
             );
         }
     }
