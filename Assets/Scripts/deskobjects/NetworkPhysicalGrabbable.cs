@@ -56,7 +56,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
     [Networked] private Vector3 AvatarHandPositionOffset { get; set; }
     [Networked] private Quaternion AvatarHandRotationOffset { get; set; }
     [Networked] private NetworkBool AvatarHandOffsetIsValid { get; set; }
-    [Networked] private NetworkBool HasReceivedGrabTarget { get; set; }
 
     [Networked] public Vector3 TargetPosition { get; private set; }
     [Networked] public Quaternion TargetRotation { get; private set; }
@@ -128,7 +127,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             AvatarHandPositionOffset = Vector3.zero;
             AvatarHandRotationOffset = Quaternion.identity;
             AvatarHandOffsetIsValid = false;
-            HasReceivedGrabTarget = false;
             ReleaseCooldownTimer = TickTimer.None;
 
             if (rb != null)
@@ -166,7 +164,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
 
         if (IsGrabbed)
         {
-            UpdateTargetFromAvatarHand();
             MoveTowardsTarget();
             EstimateVelocity();
         }
@@ -339,7 +336,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         AvatarHandPositionOffset = Vector3.zero;
         AvatarHandRotationOffset = Quaternion.identity;
         AvatarHandOffsetIsValid = false;
-        HasReceivedGrabTarget = false;
 
         TargetPosition = transform.position;
         TargetRotation = transform.rotation;
@@ -405,18 +401,20 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
             return;
         }
 
-        HasReceivedGrabTarget = true;
+        if (UsesAvatarHandAttachment)
+        {
+            TryInitializeAvatarHandOffset(targetPosition, targetRotation);
+        }
 
-        if (UsesAvatarHandAttachment &&
-            TryInitializeAvatarHandOffset(targetPosition, targetRotation))
-        {
-            UpdateTargetFromAvatarHand();
-        }
-        else
-        {
-            TargetPosition = targetPosition;
-            TargetRotation = targetRotation;
-        }
+        // The Interaction SDK solves its local hand visual from the grabbed
+        // object's pose. Driving the authoritative object back from the
+        // avatar wrist creates a circular dependency (object -> hand visual
+        // -> avatar wrist -> object) that amplifies offsets into an orbit or
+        // spin. State Authority must therefore follow the input pose directly.
+        // The wrist-relative offset is only used by LateUpdate on proxies to
+        // hide network interpolation lag.
+        TargetPosition = targetPosition;
+        TargetRotation = targetRotation;
 
         if (debugMoveLog)
         {
@@ -467,7 +465,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         AvatarHandPositionOffset = Vector3.zero;
         AvatarHandRotationOffset = Quaternion.identity;
         AvatarHandOffsetIsValid = false;
-        HasReceivedGrabTarget = false;
 
         if (releaseCooldown > 0f)
         {
@@ -522,7 +519,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         AvatarHandPositionOffset = Vector3.zero;
         AvatarHandRotationOffset = Quaternion.identity;
         AvatarHandOffsetIsValid = false;
-        HasReceivedGrabTarget = false;
 
         TargetPosition = resetPosition;
         TargetRotation = resetRotation;
@@ -647,33 +643,6 @@ public class NetworkPhysicalGrabbable : NetworkBehaviour
         rotation =
             (anchor.rotation * AvatarHandRotationOffset).normalized;
         return true;
-    }
-
-    private void UpdateTargetFromAvatarHand()
-    {
-        if (!UsesAvatarHandAttachment)
-        {
-            return;
-        }
-
-        if (!HasReceivedGrabTarget)
-        {
-            return;
-        }
-
-        if (!AvatarHandOffsetIsValid &&
-            !TryInitializeAvatarHandOffset(TargetPosition, TargetRotation))
-        {
-            return;
-        }
-
-        if (TryGetAvatarHandAttachmentPose(
-                out Vector3 position,
-                out Quaternion rotation))
-        {
-            TargetPosition = position;
-            TargetRotation = rotation;
-        }
     }
 
     public bool CanBeGrabbed()
