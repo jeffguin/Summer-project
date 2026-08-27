@@ -19367,7 +19367,7 @@ PrefabInstance:
       objectReference: {fileID: 692866074}
     - target: {fileID: 5384149497933854313, guid: de2597cbad7f72c4d9d9bc1b703e8e39, type: 3}
       propertyPath: m_VersionIndex
-      value: 1858
+      value: 1861
       objectReference: {fileID: 0}
     - target: {fileID: 6491207516826184726, guid: de2597cbad7f72c4d9d9bc1b703e8e39, type: 3}
       propertyPath: m_Mesh
@@ -19391,7 +19391,7 @@ PrefabInstance:
       objectReference: {fileID: 857361438}
     - target: {fileID: 8857947000925129503, guid: de2597cbad7f72c4d9d9bc1b703e8e39, type: 3}
       propertyPath: m_VersionIndex
-      value: 1858
+      value: 1861
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -31018,14 +31018,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   screen: {fileID: 1838740837}
   eye: {fileID: 195134167}
-  idealMinDistance: 0.6
-  idealMaxDistance: 1.5
-  closeLimitDistance: 0.3
-  farLimitDistance: 3
-  maximumEffectiveCloseDistance: 0.6
-  minimumEffectiveFarDistance: 1.5
-  cadre: {fileID: 0}
-  enableCadreAtFarLimit: 1
+  referenceEyeDistance: 1
+  distanceSizeStrength: 1
+  minimumSizeMultiplier: 0.5
+  maximumSizeMultiplier: 2
 --- !u!114 &967781329
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -49658,7 +49654,7 @@ PrefabInstance:
       objectReference: {fileID: 1891906107}
     - target: {fileID: 843185697976903228, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_VersionIndex
-      value: 1493
+      value: 1496
       objectReference: {fileID: 0}
     - target: {fileID: 1345380280598344761, guid: 42f66c559aa1f2240bb57d8c0d0949b0, type: 3}
       propertyPath: m_Mesh
@@ -62025,14 +62021,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   screen: {fileID: 1976086925}
   eye: {fileID: 195134167}
-  idealMinDistance: 0.6
-  idealMaxDistance: 1.5
-  closeLimitDistance: 0.3
-  farLimitDistance: 3
-  maximumEffectiveCloseDistance: 0.6
-  minimumEffectiveFarDistance: 1.5
-  cadre: {fileID: 0}
-  enableCadreAtFarLimit: 1
+  referenceEyeDistance: 1
+  distanceSizeStrength: 1
+  minimumSizeMultiplier: 0.5
+  maximumSizeMultiplier: 2
 --- !u!114 &1671613092
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -65559,7 +65551,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 1930780074}
-  m_VersionIndex: 1493
+  m_VersionIndex: 1496
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -67944,6 +67936,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 893860491578402814, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 893860491578402814, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: distanceSizeStrength
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 960904978186131004, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
@@ -68104,11 +68100,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2379799721136356909, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalScale.x
-      value: 1.11
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2379799721136356909, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalScale.y
-      value: 1.77
+      value: 1.778
       objectReference: {fileID: 0}
     - target: {fileID: 2379799721136356909, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.x
@@ -68163,20 +68159,36 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: maxFOV
+      value: 90
+      objectReference: {fileID: 0}
+    - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: minFOV
+      value: 90
+      objectReference: {fileID: 0}
+    - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: screen
       value: 
       objectReference: {fileID: 1838740837}
     - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_Enabled
-      value: 0
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: maxDistance
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3036871499613536057, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: minDistance
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3259432992741104797, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.61
+      value: 0.5967
       objectReference: {fileID: 0}
     - target: {fileID: 3259432992741104797, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.345
+      value: 0.3357
       objectReference: {fileID: 0}
     - target: {fileID: 3259432992741104797, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.x
@@ -68240,7 +68252,11 @@ PrefabInstance:
       objectReference: {fileID: 1976086925}
     - target: {fileID: 4281284736035298093, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_Enabled
-      value: 0
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4281284736035298093, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: minDistance
+      value: 0.8
       objectReference: {fileID: 0}
     - target: {fileID: 4952932682834265904, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_IsActive
@@ -68248,11 +68264,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5059466020012251281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -2.1920004
+      value: -2.0990005
+      objectReference: {fileID: 0}
+    - target: {fileID: 5059466020012251281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.07000005
       objectReference: {fileID: 0}
     - target: {fileID: 5059466020012251281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -2.8700008
+      value: -1.0370005
       objectReference: {fileID: 0}
     - target: {fileID: 5059466020012251281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.w
@@ -68264,7 +68284,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5059466020012251281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.026194353
+      value: 0.026194293
       objectReference: {fileID: 0}
     - target: {fileID: 5059466020012251281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.z
@@ -68288,11 +68308,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -2.1920004
+      value: -2.0990005
+      objectReference: {fileID: 0}
+    - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.07000005
       objectReference: {fileID: 0}
     - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -2.8700008
+      value: -1.0370005
       objectReference: {fileID: 0}
     - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.w
@@ -68300,15 +68324,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.x
-      value: -0.009841793
+      value: -0.009841911
       objectReference: {fileID: 0}
     - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.4055804
+      value: 0.4055805
       objectReference: {fileID: 0}
     - target: {fileID: 5666932355328758517, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0.0063147335
+      value: -0.006314577
       objectReference: {fileID: 0}
     - target: {fileID: 6221390747282212281, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_RenderShadows
@@ -68320,7 +68344,7 @@ PrefabInstance:
       objectReference: {fileID: 828379417}
     - target: {fileID: 6245977563746952434, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_VersionIndex
-      value: 910
+      value: 919
       objectReference: {fileID: 0}
     - target: {fileID: 6852084150715151148, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: screen
@@ -68396,19 +68420,35 @@ PrefabInstance:
       objectReference: {fileID: 1838740837}
     - target: {fileID: 8562736772970988439, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_Enabled
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8562736772970988439, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: idealMaxDistance
       value: 1.96
       objectReference: {fileID: 0}
+    - target: {fileID: 8562736772970988439, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: distanceSizeStrength
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8562736772970988439, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: referenceEyeDistance
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8562736772970988439, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: maximumSizeMultiplier
+      value: 4
+      objectReference: {fileID: 0}
     - target: {fileID: 8944845359523217784, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -1.28
+      value: -1.187
+      objectReference: {fileID: 0}
+    - target: {fileID: 8944845359523217784, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.648
       objectReference: {fileID: 0}
     - target: {fileID: 8944845359523217784, guid: 28a0b73918ec93b4c8becd25f46cd8ad, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -3.64
+      value: -1.807
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
@@ -68438,7 +68478,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 1838740835}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 0}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7d68bcefa9c01284ebb9bf53bd617c7c, type: 3}
   m_Name: 
@@ -68454,7 +68494,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 1838740835}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 0}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7d68bcefa9c01284ebb9bf53bd617c7c, type: 3}
   m_Name: 
@@ -74361,14 +74401,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   screen: {fileID: 0}
   eye: {fileID: 195134167}
-  idealMinDistance: 0.6
-  idealMaxDistance: 1.5
-  closeLimitDistance: 0.3
-  farLimitDistance: 3
-  maximumEffectiveCloseDistance: 0.6
-  minimumEffectiveFarDistance: 1.5
-  cadre: {fileID: 0}
-  enableCadreAtFarLimit: 1
+  referenceEyeDistance: 1
+  distanceSizeStrength: 1
+  minimumSizeMultiplier: 0.5
+  maximumSizeMultiplier: 2
 --- !u!114 &1886197364
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -81919,14 +81955,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   screen: {fileID: 0}
   eye: {fileID: 0}
-  idealMinDistance: 0.6
-  idealMaxDistance: 1.5
-  closeLimitDistance: 0.3
-  farLimitDistance: 3
-  maximumEffectiveCloseDistance: 0.6
-  minimumEffectiveFarDistance: 1.5
-  cadre: {fileID: 0}
-  enableCadreAtFarLimit: 1
+  referenceEyeDistance: 1
+  distanceSizeStrength: 1
+  minimumSizeMultiplier: 0.5
+  maximumSizeMultiplier: 2
 --- !u!20 &2108219334
 Camera:
   m_ObjectHideFlags: 0
