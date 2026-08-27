@@ -115,6 +115,34 @@
       "sources": [],
       "skeleton": []
     },
+    "/actions/newset": {
+      "chords": [],
+      "poses": [
+        {
+          "output": "/actions/newset/in/righthandplace",
+          "path": "/user/hand/right/pose/raw"
+        }
+      ],
+      "haptics": [
+        {
+          "output": "/actions/newset/out/highfivehaptic",
+          "path": "/user/hand/right/output/haptic"
+        }
+      ],
+      "sources": [
+        {
+          "path": "/user/hand/right/input/trigger",
+          "mode": "trigger",
+          "parameters": {},
+          "inputs": {
+            "click": {
+              "output": "/actions/newset/in/rightconcl"
+            }
+          }
+        }
+      ],
+      "skeleton": []
+    },
     "/actions/platformer": {
       "chords": [],
       "poses": [],

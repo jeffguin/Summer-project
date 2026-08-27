@@ -1,0 +1,143 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6963879013642378948
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8472838832575180898}
+  - component: {fileID: 3710598341713009821}
+  - component: {fileID: 7217507166542922752}
+  - component: {fileID: 8004165709172075206}
+  - component: {fileID: 6049526820822921837}
+  - component: {fileID: -5778272132864700022}
+  m_Layer: 0
+  m_Name: ActorMovementNetworkRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8472838832575180898
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6963879013642378948}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3710598341713009821
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6963879013642378948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 2511425114
+  ObjectInterest: 1
+  Flags: 262145
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 7217507166542922752}
+  - {fileID: 8004165709172075206}
+  - {fileID: -5778272132864700022}
+  ForceRemoteRenderTimeframe: 0
+--- !u!114 &7217507166542922752
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6963879013642378948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0
+--- !u!114 &8004165709172075206
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6963879013642378948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7737298c32ada8842bbb643b9adcba8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _MetaId: 0
+  _CharacterId: 0
+  _CharacterScale: 0
+  _followCameraRig: 0
+  _renderRateFactor: 250
+--- !u!114 &6049526820822921837
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6963879013642378948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c438a057ef44d37b2a5c178ef426d93, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _networkCharacterRetargeter: {fileID: 0}
+  _applyData: 1
+  _spawnDelay: 0.5
+  _receiveAndDiscardRemotePayloads: 0
+  _initializeRemoteAvatarBeforeDiscarding: 0
+  _queueRemotePayloadsBeforeDiscarding: 0
+  _deserializeQueuedFullSnapshotsWithoutAck: 0
+  _maximumSendRateHz: 32
+  _receiveBufferSize: 3
+  _disableRemoteInterpolation: 1
+  _remotePoseSmoothingSpeed: 24
+  _forceFullSnapshotsForManagedSmoothing: 1
+  _rejectRemotePoseDiscontinuities: 1
+  _maximumRemoteJointRotationStepDegrees: 135
+  _minimumRemoteJointScale: 0.001
+  _maximumRemoteJointScale: 10
+  _enableStalePacketProtection: 1
+  _stalePacketTimeoutSeconds: 0.5
+  _validateReceivedPose: 1
+  _logNetworkStatistics: 1
+  _networkStatisticsInterval: 5
+--- !u!114 &-5778272132864700022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6963879013642378948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2ae5236f7f3432ba024857e8be39182, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _localRootSource: {fileID: 0}
+  _stageSpawnPoint: {fileID: 0}
+  _useYawOnly: 1
+  _lockHeightToSpawnPoint: 1
+  _heightOffset: 0

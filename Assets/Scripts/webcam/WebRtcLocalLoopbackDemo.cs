@@ -19,13 +19,11 @@ public class WebRtcLocalLoopbackDemo : MonoBehaviour
     private RTCPeerConnection receiverPeer;
 
     private VideoStreamTrack webcamVideoTrack;
-    private Coroutine webRtcUpdateCoroutine;
-
     private bool isRunning = false;
 
     private void Start()
     {
-        webRtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
+        WebRtcRuntimePump.EnsureExists();
 
         if (startWebRtcButton != null)
         {
@@ -221,11 +219,5 @@ public class WebRtcLocalLoopbackDemo : MonoBehaviour
     private void OnDestroy()
     {
         StopLoopback();
-
-        if (webRtcUpdateCoroutine != null)
-        {
-            StopCoroutine(webRtcUpdateCoroutine);
-            webRtcUpdateCoroutine = null;
-        }
     }
 }

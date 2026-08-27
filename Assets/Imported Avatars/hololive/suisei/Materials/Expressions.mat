@@ -2,23 +2,32 @@
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
-  serializedVersion: 6
+  serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Expressions
-  m_Shader: {fileID: 4800000, guid: 8de211b971534924695476b286d3f905, type: 3}
-  m_ShaderKeywords: 
+  m_Shader: {fileID: 4800000, guid: 2fbcc86ab1452f94a919d19a83abf926, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords:
+  - _ALPHAPREMULTIPLY_ON
+  - _SPECULAR_AFFECT_BY_NDOTL
+  - _SURFACE_TYPE_TRANSPARENT
+  m_InvalidKeywords:
+  - VIGNETTE_MASKED
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
-  m_CustomRenderQueue: 3000
+  m_CustomRenderQueue: -1
   stringTagMap:
     OptimizedShaderFolder: Expressions
     OriginalShader: ".poiyomi/\u2022 Poiyomi Toon \u2022"
     RenderType: Transparent
-  disabledShaderPasses: []
+  disabledShaderPasses:
+  - SHADOWCASTER
+  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -362,6 +371,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _SpecGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _SpecularAnisoJitterMacro:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -414,6 +427,7 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    m_Ints: []
     m_Floats:
     - DSGI: 0
     - Instancing: 0
@@ -438,6 +452,8 @@ Material:
     - _AnisoTangentMapUV: 0
     - _AnisoUseTangentMap: 0
     - _AnisoUseTangentMap1: 0
+    - _AreaLightSampleDistance: 0.5
+    - _AreaLightSampleToggle: 0
     - _AttenuationMultiplier: 0
     - _AudioLinkAddEmission1Band: 0
     - _AudioLinkAddEmissionBand: 0
@@ -595,6 +611,9 @@ Material:
     - _DetailNormalMapUV: 0
     - _DetailTexIntensity: 1
     - _DetailTexUV: 0
+    - _DiffuseWrapColorMult: 2
+    - _DiffuseWrapDist: 0.3
+    - _DiffuseWrapEnabled: 0
     - _DisableDirectionalInAdd: 1
     - _DissolveAlpha: 0
     - _DissolveAlpha0: 0
@@ -935,6 +954,7 @@ Material:
     - _RGBNormalBlend: 0
     - _RGBRed_UV: 0
     - _RGBUseVertexColors: 0
+    - _RecalculateNormalsToggle: 0
     - _RgbNormalAScale: 0
     - _RgbNormalAUV: 0
     - _RgbNormalBScale: 0
@@ -1026,14 +1046,17 @@ Material:
     - _SpecularToonStart1: 0.95
     - _SpecularType: 1
     - _SpecularType1: 1
+    - _SpecularityNDotL: 1
     - _SrcBlend: 1
     - _SssBumpBlur: 0.7
     - _SssScale: 1
+    - _StencilComp: 3
     - _StencilCompareFunction: 8
     - _StencilFailOp: 0
     - _StencilPassOp: 0
     - _StencilReadMask: 255
     - _StencilRef: 0
+    - _StencilValue: 0
     - _StencilWriteMask: 255
     - _StencilZFailOp: 0
     - _TextEnabled: 0
@@ -1055,6 +1078,7 @@ Material:
     - _Use_1stShadeMapAlpha_As_ShadowMask: 0
     - _Use_2ndShadeMapAlpha_As_ShadowMask: 0
     - _Use_BaseAs1st: 0
+    - _VertexDisplShadows: 0
     - _VertexManipulationHeight: 0
     - _VertexManipulationHeightBias: 0
     - _VertexManipulationHeightUV: 0
@@ -1373,6 +1397,7 @@ Material:
     - _DetailNormalMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _DetailTexPan: {r: 0, g: 0, b: 0, a: 0}
     - _DetailTint: {r: 1, g: 1, b: 1, a: 1}
+    - _DiffuseWrapColor: {r: 1, g: 0.29999998, b: 0.19999996, a: 1}
     - _DissolveDetailNoisePan: {r: 0, g: 0, b: 0, a: 0}
     - _DissolveEdgeColor: {r: 1, g: 1, b: 1, a: 1}
     - _DissolveEndPoint: {r: 0, g: 1, b: 0, a: 0}
@@ -1472,6 +1497,7 @@ Material:
     - _SSSColor: {r: 1, g: 0, b: 0, a: 1}
     - _SSSThicknessMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _SmoothnessMaskPan: {r: 0, g: 0, b: 0, a: 0}
+    - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SpecularAnisoJitterMacro1Pan: {r: 0, g: 0, b: 0, a: 0}
     - _SpecularAnisoJitterMacroPan: {r: 0, g: 0, b: 0, a: 0}
     - _SpecularAnisoJitterMicro1Pan: {r: 0, g: 0, b: 0, a: 0}
@@ -1505,3 +1531,5 @@ Material:
     - _VertexManipulationLocalScale: {r: 1, g: 1, b: 1, a: 1}
     - _VertexManipulationLocalTranslation: {r: 0, g: 0, b: 0, a: 1}
     - _VertexManipulationWorldTranslation: {r: 0, g: 0, b: 0, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

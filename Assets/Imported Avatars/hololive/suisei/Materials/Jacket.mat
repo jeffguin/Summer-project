@@ -2,23 +2,28 @@
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
-  serializedVersion: 6
+  serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Jacket
-  m_Shader: {fileID: 4800000, guid: f1a5acba1629f7b419fffe5737ae4e92, type: 3}
-  m_ShaderKeywords: 
+  m_Shader: {fileID: 4800000, guid: 650dd9526735d5b46b79224bc6e94025, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
-  m_CustomRenderQueue: 2010
+  m_CustomRenderQueue: -1
   stringTagMap:
     OptimizedShaderFolder: Jacket
     OriginalShader: ".poiyomi/\u2022 Poiyomi Toon \u2022"
     RenderType: Opaque
-  disabledShaderPasses: []
+  disabledShaderPasses:
+  - MOTIONVECTORS
+  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -60,6 +65,10 @@ Material:
         m_Offset: {x: 0, y: 0}
     - _BackFaceTexture:
         m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BaseMap:
+        m_Texture: {fileID: 2800000, guid: 7fb16fb6493f11f488c5f6ef3e79c0e1, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _BlueTexture:
@@ -362,6 +371,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _SpecGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _SpecularAnisoJitterMacro:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -414,6 +427,7 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    m_Ints: []
     m_Floats:
     - DSGI: 0
     - Instancing: 0
@@ -424,6 +438,8 @@ Material:
     - _2ndShadeMapMask_Inverse: 0
     - _2nd_ShadeMapUV: 0
     - _AOStrength: 1
+    - _AddPrecomputedVelocity: 0
+    - _AlphaClip: 0
     - _AlphaMod: 0
     - _AlphaPremultiply: 0
     - _AlphaToMask: 0
@@ -438,6 +454,8 @@ Material:
     - _AnisoTangentMapUV: 0
     - _AnisoUseTangentMap: 0
     - _AnisoUseTangentMap1: 0
+    - _AreaLightSampleDistance: 0.5
+    - _AreaLightSampleToggle: 0
     - _AttenuationMultiplier: 0
     - _AudioLinkAddEmission1Band: 0
     - _AudioLinkAddEmissionBand: 0
@@ -515,6 +533,7 @@ Material:
     - _BackFaceTextureUV: 0
     - _BaseColor_Step: 0.5
     - _BaseShade_Feather: 0.0001
+    - _Blend: 0
     - _BlendOp: 0
     - _BlendOpAlpha: 0
     - _BumpMapUV: 0
@@ -595,6 +614,9 @@ Material:
     - _DetailNormalMapUV: 0
     - _DetailTexIntensity: 1
     - _DetailTexUV: 0
+    - _DiffuseWrapColorMult: 2
+    - _DiffuseWrapDist: 0.3
+    - _DiffuseWrapEnabled: 0
     - _DisableDirectionalInAdd: 1
     - _DissolveAlpha: 0
     - _DissolveAlpha0: 0
@@ -639,6 +661,7 @@ Material:
     - _DitherGradient: 0.1
     - _DitheringEnabled: 0
     - _DstBlend: 0
+    - _DstBlendAlpha: 0
     - _Emission1CenterOutAddAudioLinkwidth: 1
     - _Emission1CenterOutAudioLinkWidth: 1
     - _EmissionBaseColorAsMap: 0
@@ -712,6 +735,7 @@ Material:
     - _EnableSSS: 0
     - _EnableSpecular: 0
     - _EnableSpecular1: 0
+    - _Filling: 0
     - _FlipbookAdd: 0
     - _FlipbookAlphaControlsFinalAlpha: 0
     - _FlipbookColorReplaces: 0
@@ -926,6 +950,8 @@ Material:
     - _PathingColorMapUV: 0
     - _PathingMapUV: 0
     - _PatreonHelpBox: 0
+    - _Power: 0.25
+    - _QueueOffset: 0
     - _RGBAlpha_UV: 0
     - _RGBBlendMultiplicative: 0
     - _RGBBlue_UV: 0
@@ -935,6 +961,7 @@ Material:
     - _RGBNormalBlend: 0
     - _RGBRed_UV: 0
     - _RGBUseVertexColors: 0
+    - _RecalculateNormalsToggle: 0
     - _RgbNormalAScale: 0
     - _RgbNormalAUV: 0
     - _RgbNormalBScale: 0
@@ -969,6 +996,7 @@ Material:
     - _SSSSCale: 0.25
     - _SSSThicknessMapUV: 0
     - _SSSThicknessMod: 0
+    - _SampleGI: 0
     - _SampleWorld: 0
     - _Saturation: 0
     - _ScrollingEmission: 0
@@ -1026,16 +1054,21 @@ Material:
     - _SpecularToonStart1: 0.95
     - _SpecularType: 1
     - _SpecularType1: 1
+    - _SpecularityNDotL: 1
     - _SrcBlend: 1
+    - _SrcBlendAlpha: 1
     - _SssBumpBlur: 0.7
     - _SssScale: 1
+    - _StencilComp: 3
     - _StencilCompareFunction: 8
     - _StencilFailOp: 0
     - _StencilPassOp: 0
     - _StencilReadMask: 255
     - _StencilRef: 0
+    - _StencilValue: 0
     - _StencilWriteMask: 255
     - _StencilZFailOp: 0
+    - _Surface: 0
     - _TextEnabled: 0
     - _TextFPSEmissionStrength: 0
     - _TextFPSEnabled: 0
@@ -1055,6 +1088,7 @@ Material:
     - _Use_1stShadeMapAlpha_As_ShadowMask: 0
     - _Use_2ndShadeMapAlpha_As_ShadowMask: 0
     - _Use_BaseAs1st: 0
+    - _VertexDisplShadows: 0
     - _VertexManipulationHeight: 0
     - _VertexManipulationHeightBias: 0
     - _VertexManipulationHeightUV: 0
@@ -1347,6 +1381,7 @@ Material:
     - _BRDFSpecularMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _BackFaceColor: {r: 1, g: 1, b: 1, a: 1}
     - _BackFacePanning: {r: 0, g: 0, b: 0, a: 0}
+    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _BlueColor: {r: 1, g: 1, b: 1, a: 1}
     - _BumpMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _ClearcoatMapPan: {r: 0, g: 0, b: 0, a: 0}
@@ -1373,6 +1408,7 @@ Material:
     - _DetailNormalMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _DetailTexPan: {r: 0, g: 0, b: 0, a: 0}
     - _DetailTint: {r: 1, g: 1, b: 1, a: 1}
+    - _DiffuseWrapColor: {r: 1, g: 0.29999998, b: 0.19999996, a: 1}
     - _DissolveDetailNoisePan: {r: 0, g: 0, b: 0, a: 0}
     - _DissolveEdgeColor: {r: 1, g: 1, b: 1, a: 1}
     - _DissolveEndPoint: {r: 0, g: 1, b: 0, a: 0}
@@ -1472,6 +1508,7 @@ Material:
     - _SSSColor: {r: 1, g: 0, b: 0, a: 1}
     - _SSSThicknessMapPan: {r: 0, g: 0, b: 0, a: 0}
     - _SmoothnessMaskPan: {r: 0, g: 0, b: 0, a: 0}
+    - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SpecularAnisoJitterMacro1Pan: {r: 0, g: 0, b: 0, a: 0}
     - _SpecularAnisoJitterMacroPan: {r: 0, g: 0, b: 0, a: 0}
     - _SpecularAnisoJitterMicro1Pan: {r: 0, g: 0, b: 0, a: 0}
@@ -1505,3 +1542,18 @@ Material:
     - _VertexManipulationLocalScale: {r: 1, g: 1, b: 1, a: 1}
     - _VertexManipulationLocalTranslation: {r: 0, g: 0, b: 0, a: 1}
     - _VertexManipulationWorldTranslation: {r: 0, g: 0, b: 0, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
+--- !u!114 &1584871644707710504
+MonoBehaviour:
+  m_ObjectHideFlags: 11
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0353a89b1f911e48b9e16bdc9f2e058, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 10

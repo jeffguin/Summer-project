@@ -1791,14 +1791,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b1631189d48eb56428d39cdeb3925bae, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _actorPrefab:
-    RawGuidValue: ebedd285de360c3439aa211f1b5ec645
-  _audiencePrefab:
-    RawGuidValue: f9eafc31fd681d64b9954ae3d02beb4f
+  _actorAvatarPrefab:
+    RawGuidValue: 00000000000000000000000000000000
   _webRtcSignalHubPrefab:
     RawGuidValue: 791c59e364be70543a67f514a9905ab9
   _actorSpawnPoint: {fileID: 582259865}
-  _audienceSpawnPoint: {fileID: 1757506426}
+  _actorLocalRig: {fileID: 0}
+  _audienceFishTankRig: {fileID: 0}
+  _actorHeadSource: {fileID: 0}
+  _actorLeftHandSource: {fileID: 0}
+  _actorRightHandSource: {fileID: 0}
+  _sessionName: TestRoom
 --- !u!4 &997346922
 Transform:
   m_ObjectHideFlags: 0

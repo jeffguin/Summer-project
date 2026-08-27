@@ -20,6 +20,7 @@ using UnityEditor;
 namespace SteamAudio
 {
     [CustomEditor(typeof(SteamAudioSource))]
+    [CanEditMultipleObjects]
     public class SteamAudioSourceInspector : Editor
     {
         SerializedProperty mDirectBinaural;
@@ -135,10 +136,7 @@ namespace SteamAudio
             if (audioEngineIsUnity)
             {
                 EditorGUILayout.PropertyField(mDistanceAttenuation);
-                if (mDistanceAttenuation.boolValue)
-                {
-                    EditorGUILayout.PropertyField(mDistanceAttenuationInput);
-                }
+                EditorGUILayout.PropertyField(mDistanceAttenuationInput);
             }
 
             if (audioEngineIsUnity)

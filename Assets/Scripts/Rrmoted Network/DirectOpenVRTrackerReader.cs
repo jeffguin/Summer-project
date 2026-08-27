@@ -1,3 +1,5 @@
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+
 using UnityEngine;
 using Valve.VR;
 
@@ -22,8 +24,13 @@ public class DirectOpenVRTrackerReader : MonoBehaviour
     private uint currentTrackerIndex = OpenVR.k_unTrackedDeviceIndexInvalid;
     private float logTimer = 0f;
 
+    public bool HasValidPose { get; private set; }
+    public Transform Target => target;
+
     private void Update()
     {
+        HasValidPose = false;
+
         if (OpenVR.System == null)
         {
             LogOncePerSecond("OpenVR.System is null. Is SteamVR running?");
@@ -77,6 +84,8 @@ public class DirectOpenVRTrackerReader : MonoBehaviour
             target.rotation = rigidTransform.rot;
         }
 
+        HasValidPose = true;
+
         LogOncePerSecond(
             "Tracker OK. " +
             "Index: " + currentTrackerIndex +
@@ -123,3 +132,21 @@ public class DirectOpenVRTrackerReader : MonoBehaviour
         }
     }
 }
+
+#else
+
+using UnityEngine;
+
+public class DirectOpenVRTrackerReader : MonoBehaviour
+{
+    public bool HasValidPose => false;
+    public Transform Target => null;
+
+    private void Awake()
+    {
+        Debug.LogWarning("DirectOpenVRTrackerReader is disabled on this platform. It only runs on Windows / Windows Editor with SteamVR.");
+        enabled = false;
+    }
+}
+
+#endif

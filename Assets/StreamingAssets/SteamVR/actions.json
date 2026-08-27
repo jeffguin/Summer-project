@@ -44,6 +44,23 @@
     {
       "name": "/actions/NewSet/in/NewAction1",
       "type": "pose"
+    },
+    {
+      "name": "/actions/NewSet/in/rightconcl",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/NewSet/in/righthandplace",
+      "type": "pose"
+    },
+    {
+      "name": "/actions/NewSet/in/NewAction2waist",
+      "type": "pose",
+      "requirement": "suggested"
+    },
+    {
+      "name": "/actions/NewSet/out/highFiveHaptic",
+      "type": "vibration"
     }
   ],
   "action_sets": [
@@ -65,7 +82,7 @@
     },
     {
       "name": "/actions/NewSet",
-      "usage": "single"
+      "usage": "leftright"
     }
   ],
   "default_bindings": [
